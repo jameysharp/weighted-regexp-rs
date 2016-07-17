@@ -4,3 +4,4 @@ version = "0.1.0"
 authors = ["Jamey Sharp <jamey@minilop.net>"]
 
 [dependencies]
+num-traits = "*"

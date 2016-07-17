@@ -1,23 +1,27 @@
+extern crate num_traits;
+
+use num_traits::{Zero, zero, One, one};
 use std::collections::HashSet;
 use std::hash::Hash;
+use std::ops::{Add, Mul};
 
-pub trait Regex<T> {
+pub trait Regex<T, M> {
     fn empty(&self) -> bool;
-    fn shift(&mut self, c : &T, mark : bool) -> bool;
+    fn shift(&mut self, c : &T, mark : M) -> M;
     fn reset(&mut self);
 }
 
-impl<T,U> Regex<T> for Box<U> where U : Regex<T> {
+impl<T, M, U> Regex<T, M> for Box<U> where U : Regex<T, M> {
     fn empty(&self) -> bool { self.as_ref().empty() }
-    fn shift(&mut self, c : &T, mark : bool) -> bool { self.as_mut().shift(c, mark) }
+    fn shift(&mut self, c : &T, mark : M) -> M { self.as_mut().shift(c, mark) }
     fn reset(&mut self) { self.as_mut().reset() }
 }
 
 pub struct Epsilon;
 
-impl<T> Regex<T> for Epsilon {
+impl<T, M: Zero> Regex<T, M> for Epsilon {
     fn empty(&self) -> bool { true }
-    fn shift(&mut self, _c : &T, _mark : bool) -> bool { false }
+    fn shift(&mut self, _c : &T, _mark : M) -> M { zero() }
     fn reset(&mut self) { }
 }
 
@@ -33,10 +37,10 @@ impl<T: Eq + Hash> Class<T> {
     }
 }
 
-impl<T: Eq + Hash> Regex<T> for Class<T> {
+impl<T: Eq + Hash, M: Zero + One> Regex<T, M> for Class<T> {
     fn empty(&self) -> bool { false }
-    fn shift(&mut self, c : &T, mark : bool) -> bool {
-        mark && self.accept.contains(c)
+    fn shift(&mut self, c : &T, mark : M) -> M {
+        if self.accept.contains(c) { mark } else { zero() }
     }
     fn reset(&mut self) { }
 }
@@ -53,10 +57,10 @@ impl<L, R> Alternative<L, R> {
     }
 }
 
-impl<T, L, R> Regex<T> for Alternative<L, R> where L : Regex<T> + Sized, R : Regex<T> + Sized {
+impl<T, M: Add<Output=M> + Clone, L, R> Regex<T, M> for Alternative<L, R> where L : Regex<T, M> + Sized, R : Regex<T, M> + Sized {
     fn empty(&self) -> bool { self.left.empty() || self.right.empty() }
-    fn shift(&mut self, c : &T, mark : bool) -> bool {
-        self.left.shift(c, mark) || self.right.shift(c, mark)
+    fn shift(&mut self, c : &T, mark : M) -> M {
+        self.left.shift(c, mark.clone()) + self.right.shift(c, mark)
     }
     fn reset(&mut self) {
         self.left.reset();
@@ -64,59 +68,108 @@ impl<T, L, R> Regex<T> for Alternative<L, R> where L : Regex<T> + Sized, R : Reg
     }
 }
 
-pub struct Sequence<L, R> {
+pub struct Sequence<M, L, R> {
     left : L,
     right : R,
-    marked_left : bool,
+    marked_left : M,
 }
 
-impl<T, L, R> Regex<T> for Sequence<L, R> where L : Regex<T> + Sized, R : Regex<T> + Sized {
+impl<T, M: Zero + Mul + Clone, L, R> Regex<T, M> for Sequence<M, L, R> where L : Regex<T, M> + Sized, R : Regex<T, M> + Sized {
     fn empty(&self) -> bool { self.left.empty() && self.right.empty() }
-    fn shift(&mut self, c : &T, mark : bool) -> bool {
-        let marked_left = self.left.shift(c, mark);
-        let marked_right = self.right.shift(c, self.marked_left || (mark && self.left.empty()));
-        self.marked_left = marked_left;
-        (marked_left && self.right.empty()) || marked_right
+    fn shift(&mut self, c : &T, mark : M) -> M {
+        // Shift the new mark through the left child.
+        let marked_left = self.left.shift(c, mark.clone());
+
+        // Save the new mark that came out of the left child and get the
+        // previously-saved mark. The previous left mark is the one we
+        // feed into the right child.
+        let mut old_marked_left = marked_left.clone();
+        std::mem::swap(&mut self.marked_left, &mut old_marked_left);
+
+        // If the left child could match the empty string, then in
+        // addition to its previous mark, we also feed our new input
+        // mark to the right child.
+        if self.left.empty() {
+            old_marked_left = old_marked_left + mark;
+        }
+        let marked_right = self.right.shift(c, old_marked_left);
+
+        // Whatever the right child produced is our result, except if
+        // the right child could match the empty string, then the left
+        // child's result is included in the output too.
+        if self.right.empty() {
+            marked_left + marked_right
+        } else {
+            marked_right
+        }
     }
     fn reset(&mut self) {
         self.left.reset();
         self.right.reset();
-        self.marked_left = false;
+        self.marked_left = zero();
     }
 }
 
-pub struct Repetition<R> {
+pub struct Repetition<M, R> {
     re : R,
-    marked : bool,
+    marked : M,
 }
 
-impl<T, R> Regex<T> for Repetition<R> where R : Regex<T> + Sized {
+impl<T, M: Zero + Clone, R> Regex<T, M> for Repetition<M, R> where R : Regex<T, M> + Sized {
     fn empty(&self) -> bool { true }
-    fn shift(&mut self, c : &T, mark : bool) -> bool {
-        self.marked = self.re.shift(c, mark || self.marked);
-        self.marked
+    fn shift(&mut self, c : &T, mark : M) -> M {
+        self.marked = self.re.shift(c, mark + self.marked.clone());
+        self.marked.clone()
     }
     fn reset(&mut self) {
         self.re.reset();
-        self.marked = false;
+        self.marked = zero();
     }
 }
 
-pub fn match_regex<T, I>(re : &mut Regex<T>, over : I) -> bool
-    where I: IntoIterator<Item=T>
+pub fn match_regex<T, M, I>(re : &mut Regex<T, M>, over : I) -> M
+    where I: IntoIterator<Item=T>, M: Zero + One
 {
     let mut iter = over.into_iter();
     let mut result;
     if let Some(c) = iter.next() {
-        result = re.shift(&c, true);
+        result = re.shift(&c, one());
     } else {
-        return re.empty();
+        return if re.empty() { one() } else { zero() };
     }
     while let Some(c) = iter.next() {
-        result = re.shift(&c, false);
+        result = re.shift(&c, zero());
     }
     re.reset();
     return result;
+}
+
+#[derive(Copy, Clone)]
+pub struct Match(bool);
+
+impl Add for Match {
+    type Output = Match;
+    fn add(self, rhs : Match) -> Match { Match(self.0 || rhs.0) }
+}
+
+impl Zero for Match {
+    fn zero() -> Match { Match(false) }
+    fn is_zero(&self) -> bool { !self.0 }
+}
+
+impl Mul for Match {
+    type Output = Match;
+    fn mul(self, rhs : Match) -> Match { Match(self.0 && rhs.0) }
+}
+
+impl One for Match {
+    fn one() -> Match { Match(true) }
+}
+
+pub fn has_match<T, I>(re : &mut Regex<T, Match>, over : I) -> bool
+    where I: IntoIterator<Item=T>
+{
+    match_regex(re, over).0
 }
 
 #[cfg(test)]
@@ -126,13 +179,13 @@ mod tests {
     #[test]
     fn epsilon_empty() {
         let to_match : Option<()> = None;
-        assert!(match_regex(&mut Epsilon, to_match));
+        assert!(has_match(&mut Epsilon, to_match));
     }
 
     #[test]
     fn epsilon_nonempty() {
         let to_match = Some(());
-        assert!(!match_regex(&mut Epsilon, to_match));
+        assert!(!has_match(&mut Epsilon, to_match));
     }
 
     fn make_class() -> Class<char> {
@@ -141,26 +194,26 @@ mod tests {
 
     #[test]
     fn class_empty() {
-        assert!(!match_regex(&mut make_class(), "".chars()));
+        assert!(!has_match(&mut make_class(), "".chars()));
     }
 
     #[test]
     fn class_nonmatch() {
-        assert!(!match_regex(&mut make_class(), "A".chars()));
+        assert!(!has_match(&mut make_class(), "A".chars()));
     }
 
     #[test]
     fn class_match() {
-        assert!(match_regex(&mut make_class(), "a".chars()));
+        assert!(has_match(&mut make_class(), "a".chars()));
     }
 
     #[test]
     fn class_long() {
-        assert!(!match_regex(&mut make_class(), "ab".chars()));
+        assert!(!has_match(&mut make_class(), "ab".chars()));
     }
 
     #[test]
     fn alternative_empty() {
-        assert!(match_regex(&mut Alternative::new(Box::new(make_class()), Epsilon), None));
+        assert!(has_match(&mut Alternative::new(Box::new(make_class()), Epsilon), None));
     }
 }

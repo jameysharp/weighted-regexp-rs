@@ -7,6 +7,12 @@ pub trait Regex<T> {
     fn reset(&mut self);
 }
 
+impl<T,U> Regex<T> for Box<U> where U : Regex<T> {
+    fn empty(&self) -> bool { self.as_ref().empty() }
+    fn shift(&mut self, c : &T, mark : bool) -> bool { self.as_mut().shift(c, mark) }
+    fn reset(&mut self) { self.as_mut().reset() }
+}
+
 pub struct Epsilon;
 
 impl<T> Regex<T> for Epsilon {
@@ -35,19 +41,19 @@ impl<T: Eq + Hash> Regex<T> for Class<T> {
     fn reset(&mut self) { }
 }
 
-pub struct Alternative<T> {
-    left : Box<Regex<T>>,
-    right : Box<Regex<T>>,
+pub struct Alternative<L, R> {
+    left : L,
+    right : R,
 }
 
-impl<T> Alternative<T> {
-    pub fn new(left : Box<Regex<T>>, right : Box<Regex<T>>) -> Self
+impl<L, R> Alternative<L, R> {
+    pub fn new(left : L, right : R) -> Self
     {
         Alternative { left : left, right : right }
     }
 }
 
-impl<T> Regex<T> for Alternative<T> {
+impl<T, L, R> Regex<T> for Alternative<L, R> where L : Regex<T> + Sized, R : Regex<T> + Sized {
     fn empty(&self) -> bool { self.left.empty() || self.right.empty() }
     fn shift(&mut self, c : &T, mark : bool) -> bool {
         self.left.shift(c, mark) || self.right.shift(c, mark)
@@ -58,13 +64,13 @@ impl<T> Regex<T> for Alternative<T> {
     }
 }
 
-pub struct Sequence<T> {
-    left : Box<Regex<T>>,
-    right : Box<Regex<T>>,
+pub struct Sequence<L, R> {
+    left : L,
+    right : R,
     marked_left : bool,
 }
 
-impl<T> Regex<T> for Sequence<T> {
+impl<T, L, R> Regex<T> for Sequence<L, R> where L : Regex<T> + Sized, R : Regex<T> + Sized {
     fn empty(&self) -> bool { self.left.empty() && self.right.empty() }
     fn shift(&mut self, c : &T, mark : bool) -> bool {
         let marked_left = self.left.shift(c, mark);
@@ -79,12 +85,12 @@ impl<T> Regex<T> for Sequence<T> {
     }
 }
 
-pub struct Repetition<T> {
-    re : Box<Regex<T>>,
+pub struct Repetition<R> {
+    re : R,
     marked : bool,
 }
 
-impl<T> Regex<T> for Repetition<T> {
+impl<T, R> Regex<T> for Repetition<R> where R : Regex<T> + Sized {
     fn empty(&self) -> bool { true }
     fn shift(&mut self, c : &T, mark : bool) -> bool {
         self.marked = self.re.shift(c, mark || self.marked);
@@ -153,12 +159,8 @@ mod tests {
         assert!(!match_regex(&mut make_class(), "ab".chars()));
     }
 
-    fn make_alternative() -> Alternative<char> {
-        Alternative::new(Box::new(make_class()), Box::new(Epsilon))
-    }
-
     #[test]
     fn alternative_empty() {
-        assert!(match_regex(&mut make_alternative(), None));
+        assert!(match_regex(&mut Alternative::new(Box::new(make_class()), Epsilon), None));
     }
 }

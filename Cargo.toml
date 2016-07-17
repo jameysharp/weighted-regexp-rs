@@ -1,0 +1,6 @@
+[package]
+name = "weighted-regexp"
+version = "0.1.0"
+authors = ["Jamey Sharp <jamey@minilop.net>"]
+
+[dependencies]

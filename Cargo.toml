@@ -5,3 +5,7 @@ authors = ["Jamey Sharp <jamey@minilop.net>"]
 
 [dependencies]
 num-traits = "*"
+
+[dev-dependencies]
+quickcheck = "0.2"
+quickcheck_macros = "0.2"

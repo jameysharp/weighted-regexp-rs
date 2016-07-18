@@ -1,3 +1,9 @@
+#![cfg_attr(test, feature(plugin))]
+#![cfg_attr(test, plugin(quickcheck_macros))]
+
+#[cfg(test)]
+extern crate quickcheck;
+
 extern crate num_traits;
 
 use num_traits::{Zero, zero, One, one};
@@ -60,6 +66,13 @@ pub struct Sequence<M, L, R> {
     marked_left : M,
 }
 
+impl<M: Zero, L, R> Sequence<M, L, R> {
+    pub fn new(left : L, right : R) -> Self
+    {
+        Sequence { left : left, right : right, marked_left : zero() }
+    }
+}
+
 impl<T, M: Zero + Mul + Clone, L, R> Regex<T, M> for Sequence<M, L, R> where L : Regex<T, M> + Sized, R : Regex<T, M> + Sized {
     fn empty(&self) -> bool { self.left.empty() && self.right.empty() }
     fn shift(&mut self, c : &T, mark : M) -> M {
@@ -99,6 +112,13 @@ impl<T, M: Zero + Mul + Clone, L, R> Regex<T, M> for Sequence<M, L, R> where L :
 pub struct Repetition<M, R> {
     re : R,
     marked : M,
+}
+
+impl<M: Zero, R> Repetition<M, R> {
+    pub fn new(re : R) -> Self
+    {
+        Repetition { re : re, marked : zero() }
+    }
 }
 
 impl<T, M: Zero + Clone, R> Regex<T, M> for Repetition<M, R> where R : Regex<T, M> + Sized {
@@ -162,47 +182,126 @@ pub fn has_match<T, I>(re : &mut Regex<T, Match>, over : I) -> bool
 mod tests {
     use super::*;
 
-    #[test]
-    fn epsilon_empty() {
-        let to_match : Option<()> = None;
-        assert!(has_match(&mut Epsilon, to_match));
+    #[quickcheck]
+    fn epsilon_bool(to_match : Vec<bool>) -> bool {
+        to_match.is_empty() == has_match(&mut Epsilon, to_match)
     }
 
-    #[test]
-    fn epsilon_nonempty() {
-        let to_match = Some(());
-        assert!(!has_match(&mut Epsilon, to_match));
+    #[quickcheck]
+    fn epsilon_char(to_match : String) -> bool {
+        to_match.is_empty() == has_match(&mut Epsilon, to_match.chars())
     }
 
-    fn in_class(c : &char) -> Match {
-        Match(match *c {
-            'a' | 'b' | 'c' => true,
-            _ => false
-        })
+    #[quickcheck]
+    fn fn_bool(to_match : Vec<bool>) -> bool {
+        ({
+            let mut iter = to_match.iter();
+            match (iter.next(), iter.next()) {
+                (Some(&expected), None) => expected,
+                _ => false,
+            }
+        }) == has_match(&mut |c: &bool| Match(*c), to_match)
     }
 
-    #[test]
-    fn class_empty() {
-        assert!(!has_match(&mut in_class, "".chars()));
+    #[quickcheck]
+    fn fn_char(to_match : String) -> bool {
+        ({
+            let mut iter = to_match.chars();
+            match (iter.next(), iter.next()) {
+                (Some(expected), None) => expected.is_uppercase(),
+                _ => false,
+            }
+        }) == has_match(&mut |c: &char| Match(c.is_uppercase()), to_match.chars())
     }
 
-    #[test]
-    fn class_nonmatch() {
-        assert!(!has_match(&mut in_class, "A".chars()));
+    #[quickcheck]
+    fn fn_any_bool(to_match : Vec<bool>) -> bool {
+        let mut re = |_: &bool| Match(true);
+        (to_match.len() == 1) == has_match(&mut re, to_match)
     }
 
-    #[test]
-    fn class_match() {
-        assert!(has_match(&mut in_class, "a".chars()));
+    #[quickcheck]
+    fn fn_any_char(to_match : String) -> bool {
+        let mut re = |_: &char| Match(true);
+        (to_match.chars().count() == 1) == has_match(&mut re, to_match.chars())
     }
 
-    #[test]
-    fn class_long() {
-        assert!(!has_match(&mut in_class, "ab".chars()));
+    #[quickcheck]
+    fn fn_none_bool(to_match : Vec<bool>) -> bool {
+        let mut re = |_: &bool| Match(false);
+        !has_match(&mut re, to_match)
     }
 
-    #[test]
-    fn alternative_empty() {
-        assert!(has_match(&mut Alternative::new(Box::new(in_class) as Box<Regex<_, _>>, Epsilon), None));
+    #[quickcheck]
+    fn fn_none_char(to_match : String) -> bool {
+        let mut re = |_: &char| Match(false);
+        !has_match(&mut re, to_match.chars())
+    }
+
+    #[quickcheck]
+    fn alternative(to_match : String) -> bool {
+        let a = |c: &char| Match(*c == 'a');
+        let b = |c: &char| Match(*c == 'b');
+        ({
+            let mut iter = to_match.chars();
+            match (iter.next(), iter.next()) {
+                (Some(expected), None) => expected == 'a' || expected == 'b',
+                _ => false,
+            }
+        }) == has_match(&mut Alternative::new(a, b), to_match.chars())
+    }
+
+    #[quickcheck]
+    fn alternative_any_epsilon(to_match : String) -> bool {
+        let re = |_: &char| Match(true);
+        (to_match.chars().count() <= 1) ==
+            has_match(&mut Alternative::new(re, Epsilon), to_match.chars())
+    }
+
+    #[quickcheck]
+    fn alternative_epsilon_any(to_match : String) -> bool {
+        let re = |_: &char| Match(true);
+        (to_match.chars().count() <= 1) ==
+            has_match(&mut Alternative::new(Epsilon, re), to_match.chars())
+    }
+
+    #[quickcheck]
+    fn sequence_epsilon_left_identity(to_match : String) -> bool {
+        let mut re = |c: &char| Match(c.is_uppercase());
+        has_match(&mut Sequence::new(Epsilon, &re), to_match.chars()) ==
+            has_match(&mut re, to_match.chars())
+    }
+
+    #[quickcheck]
+    fn sequence_epsilon_right_identity(to_match : String) -> bool {
+        let mut re = |c: &char| Match(c.is_uppercase());
+        has_match(&mut Sequence::new(&re, Epsilon), to_match.chars()) ==
+            has_match(&mut re, to_match.chars())
+    }
+
+    #[quickcheck]
+    fn repeat_epsilon(to_match : String) -> bool {
+        to_match.is_empty() ==
+            has_match(&mut Repetition::new(Epsilon), to_match.chars())
+    }
+
+    #[quickcheck]
+    fn repeat_any(to_match : String) -> bool {
+        let re = |_: &char| Match(true);
+        has_match(&mut Repetition::new(re), to_match.chars())
+    }
+
+    #[quickcheck]
+    fn repeat_char(to_match : String) -> bool {
+        let re = |c: &char| Match(*c == 'A');
+        to_match.chars().all(|c| c == 'A') ==
+            has_match(&mut Repetition::new(re), to_match.chars())
+    }
+
+    #[quickcheck]
+    fn repeat_repeat_char(to_match : String) -> bool {
+        let re = |c: &char| Match(*c == 'A');
+        to_match.chars().all(|c| c == 'A') ==
+            has_match(&mut Repetition::new(Repetition::new(re)), to_match.chars())
     }
 }

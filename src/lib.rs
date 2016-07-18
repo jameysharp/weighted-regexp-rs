@@ -1,8 +1,6 @@
 extern crate num_traits;
 
 use num_traits::{Zero, zero, One, one};
-use std::collections::HashSet;
-use std::hash::Hash;
 use std::ops::{Add, Mul};
 
 pub trait Regex<T, M> {
@@ -11,7 +9,7 @@ pub trait Regex<T, M> {
     fn reset(&mut self);
 }
 
-impl<T, M, U> Regex<T, M> for Box<U> where U : Regex<T, M> {
+impl<T, M> Regex<T, M> for Box<Regex<T, M>> {
     fn empty(&self) -> bool { self.as_ref().empty() }
     fn shift(&mut self, c : &T, mark : M) -> M { self.as_mut().shift(c, mark) }
     fn reset(&mut self) { self.as_mut().reset() }
@@ -25,22 +23,10 @@ impl<T, M: Zero> Regex<T, M> for Epsilon {
     fn reset(&mut self) { }
 }
 
-pub struct Class<T: Eq + Hash> {
-    accept : HashSet<T>,
-}
-
-impl<T: Eq + Hash> Class<T> {
-    pub fn new<I>(accept : I) -> Self
-        where I: IntoIterator<Item=T>
-    {
-        Class { accept: accept.into_iter().collect() }
-    }
-}
-
-impl<T: Eq + Hash, M: Zero + One> Regex<T, M> for Class<T> {
+impl<T, M: Mul<Output=M>, F: Fn(&T) -> M> Regex<T, M> for F {
     fn empty(&self) -> bool { false }
     fn shift(&mut self, c : &T, mark : M) -> M {
-        if self.accept.contains(c) { mark } else { zero() }
+        mark * self(c)
     }
     fn reset(&mut self) { }
 }
@@ -188,32 +174,35 @@ mod tests {
         assert!(!has_match(&mut Epsilon, to_match));
     }
 
-    fn make_class() -> Class<char> {
-        Class::new("abc".chars())
+    fn in_class(c : &char) -> Match {
+        Match(match *c {
+            'a' | 'b' | 'c' => true,
+            _ => false
+        })
     }
 
     #[test]
     fn class_empty() {
-        assert!(!has_match(&mut make_class(), "".chars()));
+        assert!(!has_match(&mut in_class, "".chars()));
     }
 
     #[test]
     fn class_nonmatch() {
-        assert!(!has_match(&mut make_class(), "A".chars()));
+        assert!(!has_match(&mut in_class, "A".chars()));
     }
 
     #[test]
     fn class_match() {
-        assert!(has_match(&mut make_class(), "a".chars()));
+        assert!(has_match(&mut in_class, "a".chars()));
     }
 
     #[test]
     fn class_long() {
-        assert!(!has_match(&mut make_class(), "ab".chars()));
+        assert!(!has_match(&mut in_class, "ab".chars()));
     }
 
     #[test]
     fn alternative_empty() {
-        assert!(has_match(&mut Alternative::new(Box::new(make_class()), Epsilon), None));
+        assert!(has_match(&mut Alternative::new(Box::new(in_class) as Box<Regex<_, _>>, Epsilon), None));
     }
 }

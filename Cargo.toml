@@ -1,7 +1,11 @@
 [package]
 name = "weighted-regexp"
+description = "Rust port of 'A Play on Regular Expressions'"
 version = "0.1.0"
 authors = ["Jamey Sharp <jamey@minilop.net>"]
+repository = "https://github.com/jameysharp/weighted-regexp-rs"
+readme = "README.md"
+license = "BSD-2-Clause"
 
 [dependencies]
 num-traits = "*"

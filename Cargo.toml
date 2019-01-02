@@ -8,8 +8,9 @@ readme = "README.md"
 license = "BSD-2-Clause"
 
 [dependencies]
-num-traits = "0.1"
+# This uses only the compatible subset of 0.1 and 0.2.
+num-traits = ">= 0.1, < 0.3"
 
 [dev-dependencies]
-quickcheck = "0.2"
-quickcheck_macros = "0.2"
+# The quickcheck! macro was introduced in 0.3.
+quickcheck = ">= 0.3, < 0.8"

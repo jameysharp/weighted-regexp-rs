@@ -63,13 +63,13 @@ impl<T, M: Add<Output=M> + Clone, L, R> Regex<T, M> for Alternative<L, R> where 
 pub struct Sequence<M, L, R> {
     left : L,
     right : R,
-    marked_left : M,
+    from_left : M,
 }
 
 impl<M: Zero, L, R> Sequence<M, L, R> {
     pub fn new(left : L, right : R) -> Self
     {
-        Sequence { left : left, right : right, marked_left : zero() }
+        Sequence { left : left, right : right, from_left : zero() }
     }
 }
 
@@ -83,36 +83,73 @@ impl<M: Zero, L: Clone, R: Clone> Clone for Sequence<M, L, R> {
 impl<T, M: Zero + Clone, L, R> Regex<T, M> for Sequence<M, L, R> where L : Regex<T, M> + Sized, R : Regex<T, M> + Sized {
     fn empty(&self) -> bool { self.left.empty() && self.right.empty() }
     fn shift(&mut self, c : &T, mark : M) -> M {
-        // Shift the new mark through the left child.
-        let marked_left = self.left.shift(c, mark.clone());
+        // If any parameter or intermediate value is unused, then we've
+        // done something wrong.
+        //
+        // From the self parameter, we specifically need to use all of
+        // these values, exactly once each:
+        // - self.from_left
+        // - self.left.empty
+        // - self.left.shift
+        // - self.right.empty
+        // - self.right.shift
+        // In order to use self.from_left, we also need a new value to
+        // replace the old one with.
+        #![forbid(unused)]
 
-        // Save the new mark that came out of the left child and get the
-        // previously-saved mark. The previous left mark is the one we
-        // feed into the right child.
-        let mut old_marked_left = marked_left.clone();
-        std::mem::swap(&mut self.marked_left, &mut old_marked_left);
+        // These wrapper types let the type-checker verify that every
+        // mark which contributes to the return value is the result of
+        // exactly one call to shift(c). We need to use the current
+        // input or this isn't a correct shift, but we can't use the
+        // same input twice in the history of a mark.
 
-        // If the left child could match the empty string, then in
-        // addition to its previous mark, we also feed our new input
-        // mark to the right child.
-        if self.left.empty() {
-            old_marked_left = old_marked_left + mark;
-        }
-        let marked_right = self.right.shift(c, old_marked_left);
+        // Marks from parameters must be wrapped with Unshifted().
+        // All mark arguments to shift must be unwrapped by unshifted().
+        #[derive(Clone)]
+        #[must_use]
+        struct Unshifted<M>(M);
+        #[must_use]
+        fn unshifted<M>(m: Unshifted<M>) -> M { m.0 }
 
-        // Whatever the right child produced is our result, except if
-        // the right child could match the empty string, then the left
-        // child's result is included in the output too.
-        if self.right.empty() {
-            marked_left + marked_right
-        } else {
-            marked_right
-        }
+        // The result of shift must be wrapped with Shifted().
+        // All marks in the return value must be unwrapped by shifted().
+        #[derive(Clone)]
+        #[must_use]
+        struct Shifted<M>(M);
+        #[must_use]
+        fn shifted<M>(m: Shifted<M>) -> M { m.0 }
+
+        // Given the above rules, there are very few ways this function
+        // could possibly be written. For performance reasons, we
+        // further constrain it to call clone() as infrequently as
+        // possible.
+
+        let from_input = Unshifted(mark);
+
+        let skip_empty_left =
+            if self.left.empty() { from_input.clone() } else { Unshifted(zero()) };
+
+        let from_left = Shifted(self.left.shift(c, unshifted(from_input)));
+
+        let skip_empty_right =
+            if self.right.empty() { from_left.clone() } else { Shifted(zero()) };
+
+        // By the shift-only-once rule, we can't shift from_left through
+        // the right child. Instead, save it for the next round and use
+        // the value that the left child produced during the previous
+        // round.
+        let old_from_left = Unshifted(std::mem::replace(&mut self.from_left, shifted(from_left)));
+        // The old mark was shifted with a previous value of c, but it
+        // has not yet been shifted with the current value of c.
+
+        let from_right = Shifted(self.right.shift(c, unshifted(skip_empty_left) + unshifted(old_from_left)));
+
+        shifted(skip_empty_right) + shifted(from_right)
     }
     fn reset(&mut self) {
         self.left.reset();
         self.right.reset();
-        self.marked_left = zero();
+        self.from_left = zero();
     }
 }
 

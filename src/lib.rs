@@ -80,7 +80,7 @@ impl<M: Zero, L: Clone, R: Clone> Clone for Sequence<M, L, R> {
     }
 }
 
-impl<T, M: Zero + Mul + Clone, L, R> Regex<T, M> for Sequence<M, L, R> where L : Regex<T, M> + Sized, R : Regex<T, M> + Sized {
+impl<T, M: Zero + Clone, L, R> Regex<T, M> for Sequence<M, L, R> where L : Regex<T, M> + Sized, R : Regex<T, M> + Sized {
     fn empty(&self) -> bool { self.left.empty() && self.right.empty() }
     fn shift(&mut self, c : &T, mark : M) -> M {
         // Shift the new mark through the left child.

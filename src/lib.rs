@@ -118,17 +118,17 @@ impl<T, M: Zero + Mul + Clone, L, R> Regex<T, M> for Sequence<M, L, R> where L :
 
 pub struct Repetition<M, R> {
     re : R,
-    marked : M,
+    marked : Option<M>,
 }
 
-impl<M: Zero, R> Repetition<M, R> {
+impl<M, R> Repetition<M, R> {
     pub fn new(re : R) -> Self
     {
-        Repetition { re : re, marked : zero() }
+        Repetition { re : re, marked : None }
     }
 }
 
-impl<M: Zero, R: Clone> Clone for Repetition<M, R> {
+impl<M, R: Clone> Clone for Repetition<M, R> {
     fn clone(&self) -> Self
     {
         Repetition::new(self.re.clone())
@@ -138,12 +138,14 @@ impl<M: Zero, R: Clone> Clone for Repetition<M, R> {
 impl<T, M: Zero + Clone, R> Regex<T, M> for Repetition<M, R> where R : Regex<T, M> + Sized {
     fn empty(&self) -> bool { true }
     fn shift(&mut self, c : &T, mark : M) -> M {
-        self.marked = self.re.shift(c, mark + self.marked.clone());
-        self.marked.clone()
+        let was_marked = self.marked.take().unwrap_or_else(zero);
+        let new_mark = self.re.shift(c, mark + was_marked);
+        self.marked = Some(new_mark.clone());
+        new_mark
     }
     fn reset(&mut self) {
         self.re.reset();
-        self.marked = zero();
+        self.marked = None;
     }
 }
 

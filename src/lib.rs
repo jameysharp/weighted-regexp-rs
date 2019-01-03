@@ -19,6 +19,7 @@ impl<T, M> Regex<T, M> for Box<Regex<T, M>> {
     fn reset(&mut self) { self.as_mut().reset() }
 }
 
+#[derive(Copy, Clone)]
 pub struct Epsilon;
 
 impl<T, M: Zero> Regex<T, M> for Epsilon {
@@ -35,6 +36,7 @@ impl<T, M: Mul<Output=M>, F: Fn(&T) -> M> Regex<T, M> for F {
     fn reset(&mut self) { }
 }
 
+#[derive(Copy, Clone)]
 pub struct Alternative<L, R> {
     left : L,
     right : R,
@@ -68,6 +70,13 @@ impl<M: Zero, L, R> Sequence<M, L, R> {
     pub fn new(left : L, right : R) -> Self
     {
         Sequence { left : left, right : right, marked_left : zero() }
+    }
+}
+
+impl<M: Zero, L: Clone, R: Clone> Clone for Sequence<M, L, R> {
+    fn clone(&self) -> Self
+    {
+        Sequence::new(self.left.clone(), self.right.clone())
     }
 }
 
@@ -116,6 +125,13 @@ impl<M: Zero, R> Repetition<M, R> {
     pub fn new(re : R) -> Self
     {
         Repetition { re : re, marked : zero() }
+    }
+}
+
+impl<M: Zero, R: Clone> Clone for Repetition<M, R> {
+    fn clone(&self) -> Self
+    {
+        Repetition::new(self.re.clone())
     }
 }
 
@@ -255,13 +271,19 @@ mod tests {
 
         fn sequence_epsilon_left_identity(to_match : String) -> bool {
             let mut re = |c: &char| Match(c.is_uppercase());
-            has_match(&mut Sequence::new(Epsilon, &re), to_match.chars()) ==
+            has_match(&mut Sequence::new(Epsilon, re), to_match.chars()) ==
                 has_match(&mut re, to_match.chars())
         }
 
         fn sequence_epsilon_right_identity(to_match : String) -> bool {
             let mut re = |c: &char| Match(c.is_uppercase());
-            has_match(&mut Sequence::new(&re, Epsilon), to_match.chars()) ==
+            has_match(&mut Sequence::new(re, Epsilon), to_match.chars()) ==
+                has_match(&mut re, to_match.chars())
+        }
+
+        fn sequence_repeat_epsilon_right_identity(to_match : String) -> bool {
+            let mut re = Repetition::new(|c: &char| Match(c.is_uppercase()));
+            has_match(&mut Sequence::new(re.clone(), Epsilon), to_match.chars()) ==
                 has_match(&mut re, to_match.chars())
         }
 

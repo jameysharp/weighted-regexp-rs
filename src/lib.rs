@@ -36,6 +36,24 @@ impl<T, M: Mul<Output=M>, F: Fn(&T) -> M> Regex<T, M> for F {
     fn reset(&mut self) { }
 }
 
+#[derive(Clone)]
+pub struct Not<R>(R);
+
+impl<R> Not<R> {
+    pub fn new(re : R) -> Self { Not(re) }
+}
+
+impl<T, M: Zero + One, R> Regex<T, M> for Not<R> where R : Regex<T, M> + Sized {
+    fn empty(&self) -> bool { !self.0.empty() }
+    fn shift(&mut self, c : &T, mark : M) -> M {
+        let new_mark = self.0.shift(c, mark);
+        if new_mark.is_zero() { one() } else { zero() }
+    }
+    fn reset(&mut self) {
+        self.0.reset();
+    }
+}
+
 #[derive(Copy, Clone)]
 pub struct Alternative<L, R> {
     left : L,
@@ -306,6 +324,15 @@ mod tests {
         fn fn_none_char(to_match : String) -> bool {
             let mut re = |_: &char| Match(false);
             !has_match(&mut re, to_match.chars())
+        }
+
+        fn not_epsilon(to_match : String) -> bool {
+            !to_match.is_empty() == has_match(&mut Not::new(Epsilon), to_match.chars())
+        }
+
+        fn not_all_bools(to_match : Vec<bool>) -> bool {
+            !to_match.iter().all(|b| *b) ==
+                has_match(&mut Not::new(Repetition::new(|c: &bool| Match(*c))), to_match)
         }
 
         fn alternative(to_match : String) -> bool {

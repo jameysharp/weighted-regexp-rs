@@ -60,6 +60,30 @@ impl<T, M: Add<Output=M> + Clone, L, R> Regex<T, M> for Alternative<L, R> where 
     }
 }
 
+#[derive(Copy, Clone)]
+pub struct And<L, R> {
+    left : L,
+    right : R,
+}
+
+impl<L, R> And<L, R> {
+    pub fn new(left : L, right : R) -> Self
+    {
+        And { left : left, right : right }
+    }
+}
+
+impl<T, M: Mul<Output=M> + Clone, L, R> Regex<T, M> for And<L, R> where L : Regex<T, M> + Sized, R : Regex<T, M> + Sized {
+    fn empty(&self) -> bool { self.left.empty() && self.right.empty() }
+    fn shift(&mut self, c : &T, mark : M) -> M {
+        self.left.shift(c, mark.clone()) * self.right.shift(c, mark)
+    }
+    fn reset(&mut self) {
+        self.left.reset();
+        self.right.reset();
+    }
+}
+
 pub struct Sequence<M, L, R> {
     left : L,
     right : R,
@@ -306,6 +330,19 @@ mod tests {
             let re = |_: &char| Match(true);
             (to_match.chars().count() <= 1) ==
                 has_match(&mut Alternative::new(Epsilon, re), to_match.chars())
+        }
+
+        fn and(to_match : Vec<u8>) -> bool {
+            let hexes = Repetition::new(|c: &u8| Match(*c > 10));
+            let uppers = Repetition::new(|c: &u8| Match(c % 2 == 0));
+            to_match.iter().all(|c| *c > 10 && c % 2 == 0) ==
+                has_match(&mut And::new(hexes, uppers), to_match)
+        }
+
+        fn and_impossible(to_match : String) -> bool {
+            let something = |_: &char| Match(true);
+            let nothing = Epsilon;
+            !has_match(&mut And::new(something, nothing), to_match.chars())
         }
 
         fn sequence_epsilon_left_identity(to_match : String) -> bool {

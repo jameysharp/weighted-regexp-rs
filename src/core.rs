@@ -17,7 +17,6 @@ use std::marker::PhantomData;
 use std::mem::replace;
 use std::ops;
 
-#[derive(Copy)]
 pub struct AnyRegex<T, M, R> {
     pub re: R,
     input_type: PhantomData<T>,
@@ -58,35 +57,40 @@ impl<T, M, R> AnyRegex<T, M, R>
     pub fn reset(&mut self) { self.re.reset() }
 }
 
-impl<T, M, R: Clone> Clone for AnyRegex<T, M, R> {
-    fn clone(&self) -> Self { as_regex(self.re.clone()) }
+impl<T, M, R: Regex<T, M>> Clone for AnyRegex<T, M, R> {
+    fn clone(&self) -> Self { self.re.clone_reset() }
 }
 
 /// All grammar types/combinators must implement `Regex`.
-pub trait Regex<T, M> {
+pub trait Regex<T, M>: Sized {
     fn empty(&self) -> bool;
     fn shift(&mut self, c : &T, mark : M) -> M;
     fn reset(&mut self);
+    fn clone_reset(&self) -> AnyRegex<T, M, Self>;
 }
 
-#[derive(Copy, Clone)]
 pub struct Empty;
 
 impl<T, M: Zero> Regex<T, M> for Empty {
     fn empty(&self) -> bool { true }
     fn shift(&mut self, _c : &T, _mark : M) -> M { zero() }
     fn reset(&mut self) { }
+    fn clone_reset(&self) -> AnyRegex<T, M, Self> { empty() }
 }
 
 /// Language which only matches an empty string.
 pub fn empty<T, M>() -> AnyRegex<T, M, Empty> { as_regex(Empty) }
 
-impl<T, M: ops::Mul<Output=M>, F: Fn(&T) -> M> Regex<T, M> for F {
+impl<T, M, F> Regex<T, M> for F where
+    M: ops::Mul<Output=M>,
+    F: Fn(&T) -> M + Clone,
+{
     fn empty(&self) -> bool { false }
     fn shift(&mut self, c : &T, mark : M) -> M {
         mark * self(c)
     }
     fn reset(&mut self) { }
+    fn clone_reset(&self) -> AnyRegex<T, M, Self> { is(self.clone()) }
 }
 
 /// Language which only matches inputs containing exactly one item, and
@@ -101,7 +105,6 @@ pub fn is<T, M: ops::Mul<Output=M>, F>(f: F) -> AnyRegex<T, M, F>
     as_regex(f)
 }
 
-#[derive(Clone)]
 pub struct Not<T, M, R>(AnyRegex<T, M, R>);
 
 impl<T, M, R> ops::Not for AnyRegex<T, M, R> {
@@ -118,9 +121,9 @@ impl<T, M: Zero + One, R> Regex<T, M> for Not<T, M, R> where R : Regex<T, M> {
     fn reset(&mut self) {
         self.0.reset();
     }
+    fn clone_reset(&self) -> AnyRegex<T, M, Self> { !self.0.clone() }
 }
 
-#[derive(Copy, Clone)]
 pub struct Or<T, M, L, R> {
     left : AnyRegex<T, M, L>,
     right : AnyRegex<T, M, R>,
@@ -144,9 +147,11 @@ impl<T, M: ops::Add<Output=M> + Clone, L, R> Regex<T, M> for Or<T, M, L, R> wher
         self.left.reset();
         self.right.reset();
     }
+    fn clone_reset(&self) -> AnyRegex<T, M, Self> {
+        self.left.clone() | self.right.clone()
+    }
 }
 
-#[derive(Copy, Clone)]
 pub struct And<T, M, L, R> {
     left : AnyRegex<T, M, L>,
     right : AnyRegex<T, M, R>,
@@ -170,6 +175,9 @@ impl<T, M: ops::Mul<Output=M> + Clone, L, R> Regex<T, M> for And<T, M, L, R> whe
         self.left.reset();
         self.right.reset();
     }
+    fn clone_reset(&self) -> AnyRegex<T, M, Self> {
+        self.left.clone() & self.right.clone()
+    }
 }
 
 pub struct Sequence<T, M, L, R> {
@@ -184,14 +192,6 @@ impl<T, M: Zero, L, R> ops::Add<AnyRegex<T, M, R>> for AnyRegex<T, M, L>
     fn add(self, other: AnyRegex<T, M, R>) -> Self::Output
     {
         as_regex(Sequence { left: self, right: other, from_left: zero() })
-    }
-}
-
-impl<T, M: Zero, L: Clone, R: Clone> Clone for Sequence<T, M, L, R>
-{
-    fn clone(&self) -> Self
-    {
-        (self.left.clone() + self.right.clone()).re
     }
 }
 
@@ -266,6 +266,9 @@ impl<T, M: Zero + Clone, L, R> Regex<T, M> for Sequence<T, M, L, R> where L : Re
         self.right.reset();
         self.from_left = zero();
     }
+    fn clone_reset(&self) -> AnyRegex<T, M, Self> {
+        self.left.clone() + self.right.clone()
+    }
 }
 
 pub struct Many<T, M, R> {
@@ -281,13 +284,6 @@ pub fn many<T, M: Zero, R>(re: AnyRegex<T, M, R>) -> AnyRegex<T, M, Many<T, M, R
     as_regex(Many { re: re, marked: zero() })
 }
 
-impl<T, M: Zero, R: Clone> Clone for Many<T, M, R> {
-    fn clone(&self) -> Self
-    {
-        many(self.re.clone()).re
-    }
-}
-
 impl<T, M: Zero + Clone, R> Regex<T, M> for Many<T, M, R> where R : Regex<T, M> {
     fn empty(&self) -> bool { true }
     fn shift(&mut self, c : &T, mark : M) -> M {
@@ -298,5 +294,8 @@ impl<T, M: Zero + Clone, R> Regex<T, M> for Many<T, M, R> where R : Regex<T, M> 
     fn reset(&mut self) {
         self.re.reset();
         self.marked = zero();
+    }
+    fn clone_reset(&self) -> AnyRegex<T, M, Self> {
+        many(self.re.clone())
     }
 }

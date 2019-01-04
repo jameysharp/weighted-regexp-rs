@@ -136,13 +136,13 @@ mod tests {
 
         fn sequence_epsilon_left_identity(to_match : String) -> bool {
             let mut re = is(|&c| Match(char::is_uppercase(c)));
-            has_match(&mut (empty() + re), to_match.chars()) ==
+            has_match(&mut (empty() + re.clone()), to_match.chars()) ==
                 has_match(&mut re, to_match.chars())
         }
 
         fn sequence_epsilon_right_identity(to_match : String) -> bool {
             let mut re = is(|&c| Match(char::is_uppercase(c)));
-            has_match(&mut (re + empty()), to_match.chars()) ==
+            has_match(&mut (re.clone() + empty()), to_match.chars()) ==
                 has_match(&mut re, to_match.chars())
         }
 

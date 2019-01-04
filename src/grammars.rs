@@ -9,6 +9,7 @@ impl<T, M> Regex<T, M> for Empty where
     M: Zero,
 {
     fn empty(&self) -> bool { true }
+    fn active(&self) -> bool { false }
     fn shift(&mut self, _c : &T, _mark : M) -> M { zero() }
     fn reset(&mut self) { }
     fn clone_reset(&self) -> AnyRegex<T, M, Self> { empty() }
@@ -26,6 +27,7 @@ impl<T, M, F> Regex<T, M> for F where
     F: Fn(&T) -> M + Clone,
 {
     fn empty(&self) -> bool { false }
+    fn active(&self) -> bool { false }
     fn shift(&mut self, c : &T, mark : M) -> M {
         mark * self(c)
     }
@@ -61,6 +63,11 @@ impl<T, M, R> Regex<T, M> for Not<T, M, R> where
     R: Regex<T, M>,
 {
     fn empty(&self) -> bool { !self.0.empty() }
+
+    // Complement grammars are always active, because shifting in a zero
+    // may still result in a non-zero being shifted out.
+    fn active(&self) -> bool { true }
+
     fn shift(&mut self, c : &T, mark : M) -> M {
         let new_mark = self.0.shift(c, mark);
         if new_mark.is_zero() { one() } else { zero() }
@@ -94,6 +101,7 @@ impl<T, M, L, R> Regex<T, M> for Or<T, M, L, R> where
     R: Regex<T, M>,
 {
     fn empty(&self) -> bool { self.left.empty() || self.right.empty() }
+    fn active(&self) -> bool { self.left.active() || self.right.active() }
     fn shift(&mut self, c : &T, mark : M) -> M {
         self.left.shift(c, mark.clone()) + self.right.shift(c, mark)
     }
@@ -129,6 +137,7 @@ impl<T, M, L, R> Regex<T, M> for And<T, M, L, R> where
     R: Regex<T, M>,
 {
     fn empty(&self) -> bool { self.left.empty() && self.right.empty() }
+    fn active(&self) -> bool { self.left.active() && self.right.active() }
     fn shift(&mut self, c : &T, mark : M) -> M {
         self.left.shift(c, mark.clone()) * self.right.shift(c, mark)
     }
@@ -165,6 +174,9 @@ impl<T, M, L, R> Regex<T, M> for Sequence<T, M, L, R> where
     R: Regex<T, M>,
 {
     fn empty(&self) -> bool { self.left.empty() && self.right.empty() }
+    fn active(&self) -> bool {
+        !self.from_left.is_zero() || self.left.active() || self.right.active()
+    }
     fn shift(&mut self, c : &T, mark : M) -> M {
         // If any parameter or intermediate value is unused, then we've
         // done something wrong.
@@ -259,6 +271,7 @@ impl<T, M, R> Regex<T, M> for Many<T, M, R> where
     R: Regex<T, M>,
 {
     fn empty(&self) -> bool { true }
+    fn active(&self) -> bool { !self.marked.is_zero() || self.re.active() }
     fn shift(&mut self, c : &T, mark : M) -> M {
         let was_marked = replace(&mut self.marked, zero());
         self.marked = self.re.shift(c, mark + was_marked);

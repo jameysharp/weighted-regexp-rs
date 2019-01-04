@@ -55,6 +55,7 @@ impl<T, M, R> AnyRegex<T, M, R> where
     }
 
     pub fn empty(&self) -> bool { self.re.empty() }
+    pub fn active(&self) -> bool { self.re.active() }
     pub fn shift(&mut self, c : &T, mark : M) -> M { self.re.shift(c, mark) }
     pub fn reset(&mut self) { self.re.reset() }
 }
@@ -66,6 +67,7 @@ impl<T, M, R: Regex<T, M>> Clone for AnyRegex<T, M, R> {
 /// All grammar types/combinators must implement `Regex`.
 pub trait Regex<T, M>: Sized {
     fn empty(&self) -> bool;
+    fn active(&self) -> bool;
     fn shift(&mut self, c : &T, mark : M) -> M;
     fn reset(&mut self);
     fn clone_reset(&self) -> AnyRegex<T, M, Self>;

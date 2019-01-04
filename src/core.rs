@@ -17,12 +17,6 @@ use std::marker::PhantomData;
 use std::mem::replace;
 use std::ops;
 
-pub trait Regex<T, M> {
-    fn empty(&self) -> bool;
-    fn shift(&mut self, c : &T, mark : M) -> M;
-    fn reset(&mut self);
-}
-
 #[derive(Copy)]
 pub struct AnyRegex<T, M, R> {
     pub re: R,
@@ -56,14 +50,23 @@ impl<T, M, R> AnyRegex<T, M, R>
     }
 }
 
+impl<T, M, R> AnyRegex<T, M, R>
+    where R: Regex<T, M>
+{
+    pub fn empty(&self) -> bool { self.re.empty() }
+    pub fn shift(&mut self, c : &T, mark : M) -> M { self.re.shift(c, mark) }
+    pub fn reset(&mut self) { self.re.reset() }
+}
+
 impl<T, M, R: Clone> Clone for AnyRegex<T, M, R> {
     fn clone(&self) -> Self { as_regex(self.re.clone()) }
 }
 
-impl<T, M, R> Regex<T, M> for AnyRegex<T, M, R> where R: Regex<T, M> {
-    fn empty(&self) -> bool { self.re.empty() }
-    fn shift(&mut self, c : &T, mark : M) -> M { self.re.shift(c, mark) }
-    fn reset(&mut self) { self.re.reset() }
+/// All grammar types/combinators must implement `Regex`.
+pub trait Regex<T, M> {
+    fn empty(&self) -> bool;
+    fn shift(&mut self, c : &T, mark : M) -> M;
+    fn reset(&mut self);
 }
 
 #[derive(Copy, Clone)]

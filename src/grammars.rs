@@ -5,7 +5,9 @@ use std::ops;
 
 pub struct Empty;
 
-impl<T, M: Zero> Regex<T, M> for Empty {
+impl<T, M> Regex<T, M> for Empty where
+    M: Zero,
+{
     fn empty(&self) -> bool { true }
     fn shift(&mut self, _c : &T, _mark : M) -> M { zero() }
     fn reset(&mut self) { }
@@ -13,7 +15,11 @@ impl<T, M: Zero> Regex<T, M> for Empty {
 }
 
 /// Language which only matches an empty string.
-pub fn empty<T, M>() -> AnyRegex<T, M, Empty> { AnyRegex::new(Empty) }
+pub fn empty<T, M>() -> AnyRegex<T, M, Empty> where
+    M: Zero,
+{
+    AnyRegex::new(Empty)
+}
 
 impl<T, M, F> Regex<T, M> for F where
     M: ops::Mul<Output=M>,
@@ -33,20 +39,27 @@ impl<T, M, F> Regex<T, M> for F where
 /// This function can return any value within the weights semiring `M`;
 /// in simple cases, you probably want to return `zero()` if you want
 /// the input to not match, or `one()` if it should match.
-pub fn is<T, M: ops::Mul<Output=M>, F>(f: F) -> AnyRegex<T, M, F>
-    where F: Fn(&T) -> M
+pub fn is<T, M, F>(f: F) -> AnyRegex<T, M, F> where
+    M: ops::Mul<Output=M>,
+    F: Fn(&T) -> M + Clone,
 {
     AnyRegex::new(f)
 }
 
 pub struct Not<T, M, R>(AnyRegex<T, M, R>);
 
-impl<T, M, R> ops::Not for AnyRegex<T, M, R> {
+impl<T, M, R> ops::Not for AnyRegex<T, M, R> where
+    M: Zero + One,
+    R: Regex<T, M>,
+{
     type Output = AnyRegex<T, M, Not<T, M, R>>;
     fn not(self) -> Self::Output { AnyRegex::new(Not(self)) }
 }
 
-impl<T, M: Zero + One, R> Regex<T, M> for Not<T, M, R> where R : Regex<T, M> {
+impl<T, M, R> Regex<T, M> for Not<T, M, R> where
+    M: Zero + One,
+    R: Regex<T, M>,
+{
     fn empty(&self) -> bool { !self.0.empty() }
     fn shift(&mut self, c : &T, mark : M) -> M {
         let new_mark = self.0.shift(c, mark);
@@ -63,7 +76,10 @@ pub struct Or<T, M, L, R> {
     right : AnyRegex<T, M, R>,
 }
 
-impl<T, M, L, R> ops::BitOr<AnyRegex<T, M, R>> for AnyRegex<T, M, L>
+impl<T, M, L, R> ops::BitOr<AnyRegex<T, M, R>> for AnyRegex<T, M, L> where
+    M: ops::Add<Output=M> + Clone,
+    L: Regex<T, M>,
+    R: Regex<T, M>,
 {
     type Output = AnyRegex<T, M, Or<T, M, L, R>>;
     fn bitor(self, other: AnyRegex<T, M, R>) -> Self::Output
@@ -72,7 +88,11 @@ impl<T, M, L, R> ops::BitOr<AnyRegex<T, M, R>> for AnyRegex<T, M, L>
     }
 }
 
-impl<T, M: ops::Add<Output=M> + Clone, L, R> Regex<T, M> for Or<T, M, L, R> where L : Regex<T, M>, R : Regex<T, M> {
+impl<T, M, L, R> Regex<T, M> for Or<T, M, L, R> where
+    M: ops::Add<Output=M> + Clone,
+    L: Regex<T, M>,
+    R: Regex<T, M>,
+{
     fn empty(&self) -> bool { self.left.empty() || self.right.empty() }
     fn shift(&mut self, c : &T, mark : M) -> M {
         self.left.shift(c, mark.clone()) + self.right.shift(c, mark)
@@ -91,7 +111,10 @@ pub struct And<T, M, L, R> {
     right : AnyRegex<T, M, R>,
 }
 
-impl<T, M, L, R> ops::BitAnd<AnyRegex<T, M, R>> for AnyRegex<T, M, L>
+impl<T, M, L, R> ops::BitAnd<AnyRegex<T, M, R>> for AnyRegex<T, M, L> where
+    M: ops::Mul<Output=M> + Clone,
+    L: Regex<T, M>,
+    R: Regex<T, M>,
 {
     type Output = AnyRegex<T, M, And<T, M, L, R>>;
     fn bitand(self, other: AnyRegex<T, M, R>) -> Self::Output
@@ -100,7 +123,11 @@ impl<T, M, L, R> ops::BitAnd<AnyRegex<T, M, R>> for AnyRegex<T, M, L>
     }
 }
 
-impl<T, M: ops::Mul<Output=M> + Clone, L, R> Regex<T, M> for And<T, M, L, R> where L : Regex<T, M>, R : Regex<T, M> {
+impl<T, M, L, R> Regex<T, M> for And<T, M, L, R> where
+    M: ops::Mul<Output=M> + Clone,
+    L: Regex<T, M>,
+    R: Regex<T, M>,
+{
     fn empty(&self) -> bool { self.left.empty() && self.right.empty() }
     fn shift(&mut self, c : &T, mark : M) -> M {
         self.left.shift(c, mark.clone()) * self.right.shift(c, mark)
@@ -120,7 +147,10 @@ pub struct Sequence<T, M, L, R> {
     from_left : M,
 }
 
-impl<T, M: Zero, L, R> ops::Add<AnyRegex<T, M, R>> for AnyRegex<T, M, L>
+impl<T, M, L, R> ops::Add<AnyRegex<T, M, R>> for AnyRegex<T, M, L> where
+    M: Zero + Clone,
+    L: Regex<T, M>,
+    R: Regex<T, M>,
 {
     type Output = AnyRegex<T, M, Sequence<T, M, L, R>>;
     fn add(self, other: AnyRegex<T, M, R>) -> Self::Output
@@ -129,7 +159,11 @@ impl<T, M: Zero, L, R> ops::Add<AnyRegex<T, M, R>> for AnyRegex<T, M, L>
     }
 }
 
-impl<T, M: Zero + Clone, L, R> Regex<T, M> for Sequence<T, M, L, R> where L : Regex<T, M>, R : Regex<T, M> {
+impl<T, M, L, R> Regex<T, M> for Sequence<T, M, L, R> where
+    M: Zero + Clone,
+    L: Regex<T, M>,
+    R: Regex<T, M>,
+{
     fn empty(&self) -> bool { self.left.empty() && self.right.empty() }
     fn shift(&mut self, c : &T, mark : M) -> M {
         // If any parameter or intermediate value is unused, then we've
@@ -213,12 +247,17 @@ pub struct Many<T, M, R> {
 /// Language which matches zero or more copies of another language. In
 /// regular expressions, this is usually called "Kleene star" or just
 /// "star", and written `*`.
-pub fn many<T, M: Zero, R>(re: AnyRegex<T, M, R>) -> AnyRegex<T, M, Many<T, M, R>>
+pub fn many<T, M, R>(re: AnyRegex<T, M, R>) -> AnyRegex<T, M, Many<T, M, R>> where
+    M: Zero + Clone,
+    R: Regex<T, M>,
 {
     AnyRegex::new(Many { re: re, marked: zero() })
 }
 
-impl<T, M: Zero + Clone, R> Regex<T, M> for Many<T, M, R> where R : Regex<T, M> {
+impl<T, M, R> Regex<T, M> for Many<T, M, R> where
+    M: Zero + Clone,
+    R: Regex<T, M>,
+{
     fn empty(&self) -> bool { true }
     fn shift(&mut self, c : &T, mark : M) -> M {
         let was_marked = replace(&mut self.marked, zero());

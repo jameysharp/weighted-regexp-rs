@@ -22,14 +22,6 @@ pub struct AnyRegex<T, M, R> {
 }
 
 impl<T, M, R> AnyRegex<T, M, R>
-{
-    pub fn new(re: R) -> Self
-    {
-        AnyRegex { re: re, input_type: PhantomData, mark_type: PhantomData }
-    }
-}
-
-impl<T, M, R> AnyRegex<T, M, R>
     where M: Zero + One, R: Regex<T, M>
 {
     pub fn over<I>(&mut self, over : I) -> M
@@ -50,9 +42,18 @@ impl<T, M, R> AnyRegex<T, M, R>
     }
 }
 
-impl<T, M, R> AnyRegex<T, M, R>
-    where R: Regex<T, M>
+impl<T, M, R> AnyRegex<T, M, R> where
+    R: Regex<T, M>,
 {
+    pub fn new(re: R) -> Self
+    {
+        AnyRegex {
+            re: re,
+            input_type: PhantomData,
+            mark_type: PhantomData,
+        }
+    }
+
     pub fn empty(&self) -> bool { self.re.empty() }
     pub fn shift(&mut self, c : &T, mark : M) -> M { self.re.shift(c, mark) }
     pub fn reset(&mut self) { self.re.reset() }

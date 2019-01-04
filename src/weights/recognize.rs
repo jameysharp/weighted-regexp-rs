@@ -4,7 +4,7 @@
 
 use num_traits::{Zero, One};
 use std::ops::{Add, Mul};
-use ::core::{Regex, match_regex};
+use ::core::{Regex, AnyRegex};
 
 #[derive(Copy, Clone)]
 pub struct Match(bool);
@@ -28,10 +28,10 @@ impl One for Match {
     fn one() -> Match { Match(true) }
 }
 
-pub fn has_match<T, R, I>(re : &mut R, over : I) -> bool
+pub fn has_match<T, R, I>(re : &mut AnyRegex<T, Match, R>, over : I) -> bool
     where R: Regex<T, Match>, I: IntoIterator<Item=T>
 {
-    match_regex(re, over).0
+    re.over(over).0
 }
 
 #[cfg(test)]

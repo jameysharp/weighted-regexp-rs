@@ -8,6 +8,6 @@ pub mod weights;
 pub mod core;
 
 #[doc(inline)]
-pub use core::{empty, is, many, match_regex};
+pub use core::{empty, is, many, AnyRegex};
 #[doc(inline)]
 pub use weights::recognize::{has_match, Match};

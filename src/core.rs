@@ -267,18 +267,18 @@ impl<T, M: Zero + Clone, L, R> Regex<T, M> for Sequence<T, M, L, R> where L : Re
 
 pub struct Many<T, M, R> {
     re : AnyRegex<T, M, R>,
-    marked : Option<M>,
+    marked : M,
 }
 
 /// Language which matches zero or more copies of another language. In
 /// regular expressions, this is usually called "Kleene star" or just
 /// "star", and written `*`.
-pub fn many<T, M, R>(re: AnyRegex<T, M, R>) -> AnyRegex<T, M, Many<T, M, R>>
+pub fn many<T, M: Zero, R>(re: AnyRegex<T, M, R>) -> AnyRegex<T, M, Many<T, M, R>>
 {
-    as_regex(Many { re: re, marked: None })
+    as_regex(Many { re: re, marked: zero() })
 }
 
-impl<T, M, R: Clone> Clone for Many<T, M, R> {
+impl<T, M: Zero, R: Clone> Clone for Many<T, M, R> {
     fn clone(&self) -> Self
     {
         many(self.re.clone()).re
@@ -288,13 +288,12 @@ impl<T, M, R: Clone> Clone for Many<T, M, R> {
 impl<T, M: Zero + Clone, R> Regex<T, M> for Many<T, M, R> where R : Regex<T, M> {
     fn empty(&self) -> bool { true }
     fn shift(&mut self, c : &T, mark : M) -> M {
-        let was_marked = self.marked.take().unwrap_or_else(zero);
-        let new_mark = self.re.shift(c, mark + was_marked);
-        self.marked = Some(new_mark.clone());
-        new_mark
+        let was_marked = replace(&mut self.marked, zero());
+        self.marked = self.re.shift(c, mark + was_marked);
+        self.marked.clone()
     }
     fn reset(&mut self) {
         self.re.reset();
-        self.marked = None;
+        self.marked = zero();
     }
 }

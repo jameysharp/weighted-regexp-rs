@@ -41,12 +41,6 @@ impl<T, M, R> Regex<T, M> for AnyRegex<T, M, R> where R: Regex<T, M> {
     fn reset(&mut self) { self.0.reset() }
 }
 
-impl<T, M> Regex<T, M> for Box<Regex<T, M>> {
-    fn empty(&self) -> bool { self.as_ref().empty() }
-    fn shift(&mut self, c : &T, mark : M) -> M { self.as_mut().shift(c, mark) }
-    fn reset(&mut self) { self.as_mut().reset() }
-}
-
 #[derive(Copy, Clone)]
 pub struct Empty;
 

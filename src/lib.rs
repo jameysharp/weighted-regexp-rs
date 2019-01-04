@@ -5,12 +5,31 @@ extern crate quickcheck;
 extern crate num_traits;
 
 use num_traits::{Zero, zero, One, one};
-use std::ops::{Add, Mul};
+use std::marker::PhantomData;
+use std::ops;
 
 pub trait Regex<T, M> {
     fn empty(&self) -> bool;
     fn shift(&mut self, c : &T, mark : M) -> M;
     fn reset(&mut self);
+}
+
+#[derive(Copy)]
+pub struct AnyRegex<T, M, R>(pub R, PhantomData<T>, PhantomData<M>);
+
+pub fn as_regex<T, M, R>(re: R) -> AnyRegex<T, M, R>
+{
+    AnyRegex(re, PhantomData, PhantomData)
+}
+
+impl<T, M, R: Clone> Clone for AnyRegex<T, M, R> {
+    fn clone(&self) -> Self { as_regex(self.0.clone()) }
+}
+
+impl<T, M, R> Regex<T, M> for AnyRegex<T, M, R> where R: Regex<T, M> {
+    fn empty(&self) -> bool { self.0.empty() }
+    fn shift(&mut self, c : &T, mark : M) -> M { self.0.shift(c, mark) }
+    fn reset(&mut self) { self.0.reset() }
 }
 
 impl<T, M> Regex<T, M> for Box<Regex<T, M>> {
@@ -20,15 +39,17 @@ impl<T, M> Regex<T, M> for Box<Regex<T, M>> {
 }
 
 #[derive(Copy, Clone)]
-pub struct Epsilon;
+pub struct Empty;
 
-impl<T, M: Zero> Regex<T, M> for Epsilon {
+impl<T, M: Zero> Regex<T, M> for Empty {
     fn empty(&self) -> bool { true }
     fn shift(&mut self, _c : &T, _mark : M) -> M { zero() }
     fn reset(&mut self) { }
 }
 
-impl<T, M: Mul<Output=M>, F: Fn(&T) -> M> Regex<T, M> for F {
+pub fn empty<T, M>() -> AnyRegex<T, M, Empty> { as_regex(Empty) }
+
+impl<T, M: ops::Mul<Output=M>, F: Fn(&T) -> M> Regex<T, M> for F {
     fn empty(&self) -> bool { false }
     fn shift(&mut self, c : &T, mark : M) -> M {
         mark * self(c)
@@ -36,14 +57,21 @@ impl<T, M: Mul<Output=M>, F: Fn(&T) -> M> Regex<T, M> for F {
     fn reset(&mut self) { }
 }
 
+pub fn is<T, M: ops::Mul<Output=M>, F>(f: F) -> AnyRegex<T, M, F>
+    where F: Fn(&T) -> M
+{
+    as_regex(f)
+}
+
 #[derive(Clone)]
 pub struct Not<R>(R);
 
-impl<R> Not<R> {
-    pub fn new(re : R) -> Self { Not(re) }
+impl<T, M, R> ops::Not for AnyRegex<T, M, R> {
+    type Output = AnyRegex<T, M, Not<R>>;
+    fn not(self) -> Self::Output { as_regex(Not(self.0)) }
 }
 
-impl<T, M: Zero + One, R> Regex<T, M> for Not<R> where R : Regex<T, M> + Sized {
+impl<T, M: Zero + One, R> Regex<T, M> for Not<R> where R : Regex<T, M> {
     fn empty(&self) -> bool { !self.0.empty() }
     fn shift(&mut self, c : &T, mark : M) -> M {
         let new_mark = self.0.shift(c, mark);
@@ -55,19 +83,21 @@ impl<T, M: Zero + One, R> Regex<T, M> for Not<R> where R : Regex<T, M> + Sized {
 }
 
 #[derive(Copy, Clone)]
-pub struct Alternative<L, R> {
+pub struct Or<L, R> {
     left : L,
     right : R,
 }
 
-impl<L, R> Alternative<L, R> {
-    pub fn new(left : L, right : R) -> Self
+impl<T, M, L, R> ops::BitOr<AnyRegex<T, M, R>> for AnyRegex<T, M, L>
+{
+    type Output = AnyRegex<T, M, Or<L, R>>;
+    fn bitor(self, other: AnyRegex<T, M, R>) -> Self::Output
     {
-        Alternative { left : left, right : right }
+        as_regex(Or { left: self.0, right: other.0 })
     }
 }
 
-impl<T, M: Add<Output=M> + Clone, L, R> Regex<T, M> for Alternative<L, R> where L : Regex<T, M> + Sized, R : Regex<T, M> + Sized {
+impl<T, M: ops::Add<Output=M> + Clone, L, R> Regex<T, M> for Or<L, R> where L : Regex<T, M>, R : Regex<T, M> {
     fn empty(&self) -> bool { self.left.empty() || self.right.empty() }
     fn shift(&mut self, c : &T, mark : M) -> M {
         self.left.shift(c, mark.clone()) + self.right.shift(c, mark)
@@ -84,14 +114,16 @@ pub struct And<L, R> {
     right : R,
 }
 
-impl<L, R> And<L, R> {
-    pub fn new(left : L, right : R) -> Self
+impl<T, M, L, R> ops::BitAnd<AnyRegex<T, M, R>> for AnyRegex<T, M, L>
+{
+    type Output = AnyRegex<T, M, And<L, R>>;
+    fn bitand(self, other: AnyRegex<T, M, R>) -> Self::Output
     {
-        And { left : left, right : right }
+        as_regex(And { left: self.0, right: other.0 })
     }
 }
 
-impl<T, M: Mul<Output=M> + Clone, L, R> Regex<T, M> for And<L, R> where L : Regex<T, M> + Sized, R : Regex<T, M> + Sized {
+impl<T, M: ops::Mul<Output=M> + Clone, L, R> Regex<T, M> for And<L, R> where L : Regex<T, M>, R : Regex<T, M> {
     fn empty(&self) -> bool { self.left.empty() && self.right.empty() }
     fn shift(&mut self, c : &T, mark : M) -> M {
         self.left.shift(c, mark.clone()) * self.right.shift(c, mark)
@@ -102,27 +134,31 @@ impl<T, M: Mul<Output=M> + Clone, L, R> Regex<T, M> for And<L, R> where L : Rege
     }
 }
 
-pub struct Sequence<M, L, R> {
+pub struct Sequence<T, M, L, R> {
     left : L,
     right : R,
     from_left : M,
+    input_type : PhantomData<T>,
 }
 
-impl<M: Zero, L, R> Sequence<M, L, R> {
-    pub fn new(left : L, right : R) -> Self
+impl<T, M: Zero, L, R> ops::Add<AnyRegex<T, M, R>> for AnyRegex<T, M, L>
+{
+    type Output = AnyRegex<T, M, Sequence<T, M, L, R>>;
+    fn add(self, other: AnyRegex<T, M, R>) -> Self::Output
     {
-        Sequence { left : left, right : right, from_left : zero() }
+        as_regex(Sequence { left: self.0, right: other.0, from_left: zero(), input_type: PhantomData })
     }
 }
 
-impl<M: Zero, L: Clone, R: Clone> Clone for Sequence<M, L, R> {
+impl<T, M: Zero, L: Clone, R: Clone> Clone for Sequence<T, M, L, R>
+{
     fn clone(&self) -> Self
     {
-        Sequence::new(self.left.clone(), self.right.clone())
+        (as_regex(self.left.clone()) + as_regex(self.right.clone())).0
     }
 }
 
-impl<T, M: Zero + Clone, L, R> Regex<T, M> for Sequence<M, L, R> where L : Regex<T, M> + Sized, R : Regex<T, M> + Sized {
+impl<T, M: Zero + Clone, L, R> Regex<T, M> for Sequence<T, M, L, R> where L : Regex<T, M>, R : Regex<T, M> {
     fn empty(&self) -> bool { self.left.empty() && self.right.empty() }
     fn shift(&mut self, c : &T, mark : M) -> M {
         // If any parameter or intermediate value is unused, then we've
@@ -195,26 +231,25 @@ impl<T, M: Zero + Clone, L, R> Regex<T, M> for Sequence<M, L, R> where L : Regex
     }
 }
 
-pub struct Repetition<M, R> {
+pub struct Many<T, M, R> {
     re : R,
     marked : Option<M>,
+    input_type : PhantomData<T>,
 }
 
-impl<M, R> Repetition<M, R> {
-    pub fn new(re : R) -> Self
-    {
-        Repetition { re : re, marked : None }
-    }
+pub fn many<T, M, R>(re: AnyRegex<T, M, R>) -> AnyRegex<T, M, Many<T, M, R>>
+{
+    as_regex(Many { re: re.0, marked: None, input_type: PhantomData })
 }
 
-impl<M, R: Clone> Clone for Repetition<M, R> {
+impl<T, M, R: Clone> Clone for Many<T, M, R> {
     fn clone(&self) -> Self
     {
-        Repetition::new(self.re.clone())
+        many(as_regex(self.re.clone())).0
     }
 }
 
-impl<T, M: Zero + Clone, R> Regex<T, M> for Repetition<M, R> where R : Regex<T, M> + Sized {
+impl<T, M: Zero + Clone, R> Regex<T, M> for Many<T, M, R> where R : Regex<T, M> {
     fn empty(&self) -> bool { true }
     fn shift(&mut self, c : &T, mark : M) -> M {
         let was_marked = self.marked.take().unwrap_or_else(zero);
@@ -248,7 +283,7 @@ pub fn match_regex<T, M, I>(re : &mut Regex<T, M>, over : I) -> M
 #[derive(Copy, Clone)]
 pub struct Match(bool);
 
-impl Add for Match {
+impl ops::Add for Match {
     type Output = Match;
     fn add(self, rhs : Match) -> Match { Match(self.0 || rhs.0) }
 }
@@ -258,7 +293,7 @@ impl Zero for Match {
     fn is_zero(&self) -> bool { !self.0 }
 }
 
-impl Mul for Match {
+impl ops::Mul for Match {
     type Output = Match;
     fn mul(self, rhs : Match) -> Match { Match(self.0 && rhs.0) }
 }
@@ -267,8 +302,8 @@ impl One for Match {
     fn one() -> Match { Match(true) }
 }
 
-pub fn has_match<T, I>(re : &mut Regex<T, Match>, over : I) -> bool
-    where I: IntoIterator<Item=T>
+pub fn has_match<T, R, I>(re : &mut R, over : I) -> bool
+    where R: Regex<T, Match>, I: IntoIterator<Item=T>
 {
     match_regex(re, over).0
 }
@@ -279,11 +314,11 @@ mod tests {
 
     quickcheck! {
         fn epsilon_bool(to_match : Vec<bool>) -> bool {
-            to_match.is_empty() == has_match(&mut Epsilon, to_match)
+            to_match.is_empty() == has_match(&mut empty(), to_match)
         }
 
         fn epsilon_char(to_match : String) -> bool {
-            to_match.is_empty() == has_match(&mut Epsilon, to_match.chars())
+            to_match.is_empty() == has_match(&mut empty(), to_match.chars())
         }
 
         fn fn_bool(to_match : Vec<bool>) -> bool {
@@ -293,7 +328,7 @@ mod tests {
                     (Some(&expected), None) => expected,
                     _ => false,
                 }
-            }) == has_match(&mut |c: &bool| Match(*c), to_match)
+            }) == has_match(&mut is(|&c| Match(c)), to_match)
         }
 
         fn fn_char(to_match : String) -> bool {
@@ -303,113 +338,113 @@ mod tests {
                     (Some(expected), None) => expected.is_uppercase(),
                     _ => false,
                 }
-            }) == has_match(&mut |c: &char| Match(c.is_uppercase()), to_match.chars())
+            }) == has_match(&mut is(|&c| Match(char::is_uppercase(c))), to_match.chars())
         }
 
         fn fn_any_bool(to_match : Vec<bool>) -> bool {
-            let mut re = |_: &bool| Match(true);
+            let mut re = is(|_| Match(true));
             (to_match.len() == 1) == has_match(&mut re, to_match)
         }
 
         fn fn_any_char(to_match : String) -> bool {
-            let mut re = |_: &char| Match(true);
+            let mut re = is(|_| Match(true));
             (to_match.chars().count() == 1) == has_match(&mut re, to_match.chars())
         }
 
         fn fn_none_bool(to_match : Vec<bool>) -> bool {
-            let mut re = |_: &bool| Match(false);
+            let mut re = is(|_| Match(false));
             !has_match(&mut re, to_match)
         }
 
         fn fn_none_char(to_match : String) -> bool {
-            let mut re = |_: &char| Match(false);
+            let mut re = is(|_| Match(false));
             !has_match(&mut re, to_match.chars())
         }
 
         fn not_epsilon(to_match : String) -> bool {
-            !to_match.is_empty() == has_match(&mut Not::new(Epsilon), to_match.chars())
+            !to_match.is_empty() == has_match(&mut !empty(), to_match.chars())
         }
 
         fn not_all_bools(to_match : Vec<bool>) -> bool {
-            !to_match.iter().all(|b| *b) ==
-                has_match(&mut Not::new(Repetition::new(|c: &bool| Match(*c))), to_match)
+            !to_match.iter().all(|&b| b) ==
+                has_match(&mut !many(is(|&c| Match(c))), to_match)
         }
 
         fn alternative(to_match : String) -> bool {
-            let a = |c: &char| Match(*c == 'a');
-            let b = |c: &char| Match(*c == 'b');
+            let a = is(|&c| Match(c == 'a'));
+            let b = is(|&c| Match(c == 'b'));
             ({
                 let mut iter = to_match.chars();
                 match (iter.next(), iter.next()) {
                     (Some(expected), None) => expected == 'a' || expected == 'b',
                     _ => false,
                 }
-            }) == has_match(&mut Alternative::new(a, b), to_match.chars())
+            }) == has_match(&mut (a | b), to_match.chars())
         }
 
         fn alternative_any_epsilon(to_match : String) -> bool {
-            let re = |_: &char| Match(true);
+            let re = is(|_| Match(true));
             (to_match.chars().count() <= 1) ==
-                has_match(&mut Alternative::new(re, Epsilon), to_match.chars())
+                has_match(&mut (re | empty()), to_match.chars())
         }
 
         fn alternative_epsilon_any(to_match : String) -> bool {
-            let re = |_: &char| Match(true);
+            let re = is(|_| Match(true));
             (to_match.chars().count() <= 1) ==
-                has_match(&mut Alternative::new(Epsilon, re), to_match.chars())
+                has_match(&mut (empty() | re), to_match.chars())
         }
 
         fn and(to_match : Vec<u8>) -> bool {
-            let hexes = Repetition::new(|c: &u8| Match(*c > 10));
-            let uppers = Repetition::new(|c: &u8| Match(c % 2 == 0));
-            to_match.iter().all(|c| *c > 10 && c % 2 == 0) ==
-                has_match(&mut And::new(hexes, uppers), to_match)
+            let hexes = many(is(|&c| Match(c > 10)));
+            let uppers = many(is(|&c| Match(c % 2 == 0)));
+            to_match.iter().all(|&c| c > 10 && c % 2 == 0) ==
+                has_match(&mut (hexes & uppers), to_match)
         }
 
         fn and_impossible(to_match : String) -> bool {
-            let something = |_: &char| Match(true);
-            let nothing = Epsilon;
-            !has_match(&mut And::new(something, nothing), to_match.chars())
+            let something = is(|_| Match(true));
+            let nothing = empty();
+            !has_match(&mut (something & nothing), to_match.chars())
         }
 
         fn sequence_epsilon_left_identity(to_match : String) -> bool {
-            let mut re = |c: &char| Match(c.is_uppercase());
-            has_match(&mut Sequence::new(Epsilon, re), to_match.chars()) ==
+            let mut re = is(|&c| Match(char::is_uppercase(c)));
+            has_match(&mut (empty() + re), to_match.chars()) ==
                 has_match(&mut re, to_match.chars())
         }
 
         fn sequence_epsilon_right_identity(to_match : String) -> bool {
-            let mut re = |c: &char| Match(c.is_uppercase());
-            has_match(&mut Sequence::new(re, Epsilon), to_match.chars()) ==
+            let mut re = is(|&c| Match(char::is_uppercase(c)));
+            has_match(&mut (re + empty()), to_match.chars()) ==
                 has_match(&mut re, to_match.chars())
         }
 
         fn sequence_repeat_epsilon_right_identity(to_match : String) -> bool {
-            let mut re = Repetition::new(|c: &char| Match(c.is_uppercase()));
-            has_match(&mut Sequence::new(re.clone(), Epsilon), to_match.chars()) ==
+            let mut re = many(is(|&c| Match(char::is_uppercase(c))));
+            has_match(&mut (re.clone() + empty()), to_match.chars()) ==
                 has_match(&mut re, to_match.chars())
         }
 
         fn repeat_epsilon(to_match : String) -> bool {
             to_match.is_empty() ==
-                has_match(&mut Repetition::new(Epsilon), to_match.chars())
+                has_match(&mut many(empty()), to_match.chars())
         }
 
         fn repeat_any(to_match : String) -> bool {
-            let re = |_: &char| Match(true);
-            has_match(&mut Repetition::new(re), to_match.chars())
+            let re = is(|_| Match(true));
+            has_match(&mut many(re), to_match.chars())
         }
 
         fn repeat_char(to_match : String) -> bool {
-            let re = |c: &char| Match(*c == 'A');
+            let re = is(|&c| Match(c == 'A'));
             to_match.chars().all(|c| c == 'A') ==
-                has_match(&mut Repetition::new(re), to_match.chars())
+                has_match(&mut many(re), to_match.chars())
         }
 
         fn repeat_repeat_char(to_match : String) -> bool {
-            let re = |c: &char| Match(*c == 'A');
+            let re = is(|&c| Match(c == 'A'));
             to_match.chars().all(|c| c == 'A') ==
-                has_match(&mut Repetition::new(Repetition::new(re)), to_match.chars())
+                has_match(&mut many(many(re)), to_match.chars())
         }
     }
 }

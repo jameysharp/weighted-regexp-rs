@@ -1,4 +1,4 @@
-use core::{Regex, AnyRegex, as_regex};
+use core::{Regex, AnyRegex};
 use num_traits::{Zero, zero, One, one};
 use std::mem::replace;
 use std::ops;
@@ -13,7 +13,7 @@ impl<T, M: Zero> Regex<T, M> for Empty {
 }
 
 /// Language which only matches an empty string.
-pub fn empty<T, M>() -> AnyRegex<T, M, Empty> { as_regex(Empty) }
+pub fn empty<T, M>() -> AnyRegex<T, M, Empty> { AnyRegex::new(Empty) }
 
 impl<T, M, F> Regex<T, M> for F where
     M: ops::Mul<Output=M>,
@@ -36,14 +36,14 @@ impl<T, M, F> Regex<T, M> for F where
 pub fn is<T, M: ops::Mul<Output=M>, F>(f: F) -> AnyRegex<T, M, F>
     where F: Fn(&T) -> M
 {
-    as_regex(f)
+    AnyRegex::new(f)
 }
 
 pub struct Not<T, M, R>(AnyRegex<T, M, R>);
 
 impl<T, M, R> ops::Not for AnyRegex<T, M, R> {
     type Output = AnyRegex<T, M, Not<T, M, R>>;
-    fn not(self) -> Self::Output { as_regex(Not(self)) }
+    fn not(self) -> Self::Output { AnyRegex::new(Not(self)) }
 }
 
 impl<T, M: Zero + One, R> Regex<T, M> for Not<T, M, R> where R : Regex<T, M> {
@@ -68,7 +68,7 @@ impl<T, M, L, R> ops::BitOr<AnyRegex<T, M, R>> for AnyRegex<T, M, L>
     type Output = AnyRegex<T, M, Or<T, M, L, R>>;
     fn bitor(self, other: AnyRegex<T, M, R>) -> Self::Output
     {
-        as_regex(Or { left: self, right: other })
+        AnyRegex::new(Or { left: self, right: other })
     }
 }
 
@@ -96,7 +96,7 @@ impl<T, M, L, R> ops::BitAnd<AnyRegex<T, M, R>> for AnyRegex<T, M, L>
     type Output = AnyRegex<T, M, And<T, M, L, R>>;
     fn bitand(self, other: AnyRegex<T, M, R>) -> Self::Output
     {
-        as_regex(And { left: self, right: other })
+        AnyRegex::new(And { left: self, right: other })
     }
 }
 
@@ -125,7 +125,7 @@ impl<T, M: Zero, L, R> ops::Add<AnyRegex<T, M, R>> for AnyRegex<T, M, L>
     type Output = AnyRegex<T, M, Sequence<T, M, L, R>>;
     fn add(self, other: AnyRegex<T, M, R>) -> Self::Output
     {
-        as_regex(Sequence { left: self, right: other, from_left: zero() })
+        AnyRegex::new(Sequence { left: self, right: other, from_left: zero() })
     }
 }
 
@@ -215,7 +215,7 @@ pub struct Many<T, M, R> {
 /// "star", and written `*`.
 pub fn many<T, M: Zero, R>(re: AnyRegex<T, M, R>) -> AnyRegex<T, M, Many<T, M, R>>
 {
-    as_regex(Many { re: re, marked: zero() })
+    AnyRegex::new(Many { re: re, marked: zero() })
 }
 
 impl<T, M: Zero + Clone, R> Regex<T, M> for Many<T, M, R> where R : Regex<T, M> {

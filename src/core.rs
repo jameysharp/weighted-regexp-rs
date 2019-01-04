@@ -16,14 +16,17 @@ use num_traits::{Zero, zero, One, one};
 use std::marker::PhantomData;
 
 pub struct AnyRegex<T, M, R> {
-    pub re: R,
+    re: R,
     input_type: PhantomData<T>,
     mark_type: PhantomData<M>,
 }
 
-pub fn as_regex<T, M, R>(re: R) -> AnyRegex<T, M, R>
+impl<T, M, R> AnyRegex<T, M, R>
 {
-    AnyRegex { re: re, input_type: PhantomData, mark_type: PhantomData }
+    pub fn new(re: R) -> Self
+    {
+        AnyRegex { re: re, input_type: PhantomData, mark_type: PhantomData }
+    }
 }
 
 impl<T, M, R> AnyRegex<T, M, R>

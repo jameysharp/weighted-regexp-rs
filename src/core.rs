@@ -17,6 +17,7 @@ use std::marker::PhantomData;
 
 pub struct AnyRegex<T, M, R> {
     re: R,
+    active: bool,
     input_type: PhantomData<T>,
     mark_type: PhantomData<M>,
 }
@@ -48,16 +49,34 @@ impl<T, M, R> AnyRegex<T, M, R> where
     pub fn new(re: R) -> Self
     {
         AnyRegex {
+            active: re.active(),
             re: re,
             input_type: PhantomData,
             mark_type: PhantomData,
         }
     }
+}
 
+impl<T, M, R> AnyRegex<T, M, R> where
+    M: Zero,
+    R: Regex<T, M>,
+{
     pub fn empty(&self) -> bool { self.re.empty() }
-    pub fn active(&self) -> bool { self.re.active() }
-    pub fn shift(&mut self, c : &T, mark : M) -> M { self.re.shift(c, mark) }
-    pub fn reset(&mut self) { self.re.reset() }
+    pub fn active(&self) -> bool { self.active }
+    pub fn shift(&mut self, c : &T, mark : M) -> M {
+        if !self.active && mark.is_zero() {
+            return mark;
+        }
+        let mark = self.re.shift(c, mark);
+        self.active = self.re.active();
+        mark
+    }
+    pub fn reset(&mut self) {
+        if self.active {
+            self.re.reset();
+            self.active = self.re.active();
+        }
+    }
 }
 
 impl<T, M, R: Regex<T, M>> Clone for AnyRegex<T, M, R> {

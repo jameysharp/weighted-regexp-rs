@@ -23,7 +23,7 @@ pub fn empty<T, M>() -> AnyRegex<T, M, Empty> where
 }
 
 impl<T, M, F> Regex<T, M> for F where
-    M: ops::Mul<Output=M>,
+    M: Zero + ops::Mul<Output=M>,
     F: Fn(&T) -> M + Clone,
 {
     fn empty(&self) -> bool { false }
@@ -42,7 +42,7 @@ impl<T, M, F> Regex<T, M> for F where
 /// in simple cases, you probably want to return `zero()` if you want
 /// the input to not match, or `one()` if it should match.
 pub fn is<T, M, F>(f: F) -> AnyRegex<T, M, F> where
-    M: ops::Mul<Output=M>,
+    M: Zero + ops::Mul<Output=M>,
     F: Fn(&T) -> M + Clone,
 {
     AnyRegex::new(f)
@@ -84,7 +84,7 @@ pub struct Or<T, M, L, R> {
 }
 
 impl<T, M, L, R> ops::BitOr<AnyRegex<T, M, R>> for AnyRegex<T, M, L> where
-    M: ops::Add<Output=M> + Clone,
+    M: Zero + Clone,
     L: Regex<T, M>,
     R: Regex<T, M>,
 {
@@ -96,7 +96,7 @@ impl<T, M, L, R> ops::BitOr<AnyRegex<T, M, R>> for AnyRegex<T, M, L> where
 }
 
 impl<T, M, L, R> Regex<T, M> for Or<T, M, L, R> where
-    M: ops::Add<Output=M> + Clone,
+    M: Zero + Clone,
     L: Regex<T, M>,
     R: Regex<T, M>,
 {
@@ -120,7 +120,7 @@ pub struct And<T, M, L, R> {
 }
 
 impl<T, M, L, R> ops::BitAnd<AnyRegex<T, M, R>> for AnyRegex<T, M, L> where
-    M: ops::Mul<Output=M> + Clone,
+    M: Zero + ops::Mul<Output=M> + Clone,
     L: Regex<T, M>,
     R: Regex<T, M>,
 {
@@ -132,7 +132,7 @@ impl<T, M, L, R> ops::BitAnd<AnyRegex<T, M, R>> for AnyRegex<T, M, L> where
 }
 
 impl<T, M, L, R> Regex<T, M> for And<T, M, L, R> where
-    M: ops::Mul<Output=M> + Clone,
+    M: Zero + ops::Mul<Output=M> + Clone,
     L: Regex<T, M>,
     R: Regex<T, M>,
 {

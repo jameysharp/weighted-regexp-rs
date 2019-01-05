@@ -79,15 +79,19 @@ impl<T, M, R> AnyRegex<T, M, R> where
     }
 }
 
-impl<T, M, R: Regex<T, M>> Clone for AnyRegex<T, M, R> {
-    fn clone(&self) -> Self { self.re.clone_reset() }
-}
-
-/// All grammar types/combinators must implement `Regex`.
-pub trait Regex<T, M>: Sized {
+/// Grammar types must implement `Regex`.
+pub trait Regex<T, M> {
     fn empty(&self) -> bool;
     fn active(&self) -> bool;
     fn shift(&mut self, c : &T, mark : M) -> M;
     fn reset(&mut self);
+}
+
+impl<T, M, R: CloneRegex<T, M>> AnyRegex<T, M, R> {
+    pub fn clone_reset(&self) -> Self { self.re.clone_reset() }
+}
+
+/// Grammar types _should_ implement `CloneRegex`.
+pub trait CloneRegex<T, M>: Regex<T, M> + Sized {
     fn clone_reset(&self) -> AnyRegex<T, M, Self>;
 }

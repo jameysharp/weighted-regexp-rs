@@ -1,4 +1,4 @@
-use core::{Regex, AnyRegex};
+use core::{Regex, CloneRegex, AnyRegex};
 use num_traits::{Zero, zero, One, one};
 use std::mem::replace;
 use std::ops;
@@ -12,6 +12,11 @@ impl<T, M> Regex<T, M> for Empty where
     fn active(&self) -> bool { false }
     fn shift(&mut self, _c : &T, _mark : M) -> M { zero() }
     fn reset(&mut self) { }
+}
+
+impl<T, M> CloneRegex<T, M> for Empty where
+    M: Zero,
+{
     fn clone_reset(&self) -> AnyRegex<T, M, Self> { empty() }
 }
 
@@ -23,8 +28,8 @@ pub fn empty<T, M>() -> AnyRegex<T, M, Empty> where
 }
 
 impl<T, M, F> Regex<T, M> for F where
-    M: Zero + ops::Mul<Output=M>,
-    F: Fn(&T) -> M + Clone,
+    M: ops::Mul<Output=M>,
+    F: Fn(&T) -> M,
 {
     fn empty(&self) -> bool { false }
     fn active(&self) -> bool { false }
@@ -32,6 +37,12 @@ impl<T, M, F> Regex<T, M> for F where
         mark * self(c)
     }
     fn reset(&mut self) { }
+}
+
+impl<T, M, F> CloneRegex<T, M> for F where
+    M: Zero + ops::Mul<Output=M>,
+    F: Fn(&T) -> M + Clone,
+{
     fn clone_reset(&self) -> AnyRegex<T, M, Self> { is(self.clone()) }
 }
 
@@ -43,7 +54,7 @@ impl<T, M, F> Regex<T, M> for F where
 /// the input to not match, or `one()` if it should match.
 pub fn is<T, M, F>(f: F) -> AnyRegex<T, M, F> where
     M: Zero + ops::Mul<Output=M>,
-    F: Fn(&T) -> M + Clone,
+    F: Fn(&T) -> M,
 {
     AnyRegex::new(f)
 }
@@ -75,7 +86,13 @@ impl<T, M, R> Regex<T, M> for Not<T, M, R> where
     fn reset(&mut self) {
         self.0.reset();
     }
-    fn clone_reset(&self) -> AnyRegex<T, M, Self> { !self.0.clone() }
+}
+
+impl<T, M, R> CloneRegex<T, M> for Not<T, M, R> where
+    M: Zero + One,
+    R: CloneRegex<T, M>,
+{
+    fn clone_reset(&self) -> AnyRegex<T, M, Self> { !self.0.clone_reset() }
 }
 
 pub struct Or<T, M, L, R> {
@@ -109,8 +126,15 @@ impl<T, M, L, R> Regex<T, M> for Or<T, M, L, R> where
         self.left.reset();
         self.right.reset();
     }
+}
+
+impl<T, M, L, R> CloneRegex<T, M> for Or<T, M, L, R> where
+    M: Zero + Clone,
+    L: CloneRegex<T, M>,
+    R: CloneRegex<T, M>,
+{
     fn clone_reset(&self) -> AnyRegex<T, M, Self> {
-        self.left.clone() | self.right.clone()
+        self.left.clone_reset() | self.right.clone_reset()
     }
 }
 
@@ -145,8 +169,15 @@ impl<T, M, L, R> Regex<T, M> for And<T, M, L, R> where
         self.left.reset();
         self.right.reset();
     }
+}
+
+impl<T, M, L, R> CloneRegex<T, M> for And<T, M, L, R> where
+    M: Zero + ops::Mul<Output=M> + Clone,
+    L: CloneRegex<T, M>,
+    R: CloneRegex<T, M>,
+{
     fn clone_reset(&self) -> AnyRegex<T, M, Self> {
-        self.left.clone() & self.right.clone()
+        self.left.clone_reset() & self.right.clone_reset()
     }
 }
 
@@ -246,8 +277,15 @@ impl<T, M, L, R> Regex<T, M> for Sequence<T, M, L, R> where
         self.right.reset();
         self.from_left = zero();
     }
+}
+
+impl<T, M, L, R> CloneRegex<T, M> for Sequence<T, M, L, R> where
+    M: Zero + Clone,
+    L: CloneRegex<T, M>,
+    R: CloneRegex<T, M>,
+{
     fn clone_reset(&self) -> AnyRegex<T, M, Self> {
-        self.left.clone() + self.right.clone()
+        self.left.clone_reset() + self.right.clone_reset()
     }
 }
 
@@ -281,7 +319,21 @@ impl<T, M, R> Regex<T, M> for Many<T, M, R> where
         self.re.reset();
         self.marked = zero();
     }
+}
+
+impl<T, M, R> CloneRegex<T, M> for Many<T, M, R> where
+    M: Zero + Clone,
+    R: CloneRegex<T, M>,
+{
     fn clone_reset(&self) -> AnyRegex<T, M, Self> {
-        many(self.re.clone())
+        many(self.re.clone_reset())
     }
+}
+
+impl<T, M> Regex<T, M> for Box<Regex<T, M>>
+{
+    fn empty(&self) -> bool { self.as_ref().empty() }
+    fn active(&self) -> bool { self.as_ref().active() }
+    fn shift(&mut self, c : &T, mark : M) -> M { self.as_mut().shift(c, mark) }
+    fn reset(&mut self) { self.as_mut().reset() }
 }

@@ -249,16 +249,29 @@ impl<T, M, L, R> Regex<T, M> for Sequence<T, M, L, R> where
         // could possibly be written. For performance reasons, we
         // further constrain it to call clone() as infrequently as
         // possible.
+        //
+        // To support potentially infinite grammars, avoid calling
+        // empty() when the mark is already zero. The else branch will
+        // produce a zero() anyway, and empty() may trigger large
+        // allocations and/or a lot of computation.
 
         let from_input = Unshifted(mark);
 
         let skip_empty_left =
-            if self.left.empty() { from_input.clone() } else { Unshifted(zero()) };
+            if !from_input.0.is_zero() && self.left.empty() {
+                from_input.clone()
+            } else {
+                Unshifted(zero())
+            };
 
         let from_left = Shifted(self.left.shift(c, unshifted(from_input)));
 
         let skip_empty_right =
-            if self.right.empty() { from_left.clone() } else { Shifted(zero()) };
+            if !from_left.0.is_zero() && self.right.empty() {
+                from_left.clone()
+            } else {
+                Shifted(zero())
+            };
 
         // By the shift-only-once rule, we can't shift from_left through
         // the right child. Instead, save it for the next round and use

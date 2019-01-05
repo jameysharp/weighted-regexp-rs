@@ -11,6 +11,6 @@ pub mod weights;
 #[doc(inline)]
 pub use core::AnyRegex;
 #[doc(inline)]
-pub use grammars::{empty, is, many};
+pub use grammars::{empty, is, many, delay};
 #[doc(inline)]
 pub use weights::recognize::{has_match, Match};

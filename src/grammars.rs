@@ -337,3 +337,51 @@ impl<T, M> Regex<T, M> for Box<Regex<T, M>>
     fn shift(&mut self, c : &T, mark : M) -> M { self.as_mut().shift(c, mark) }
     fn reset(&mut self) { self.as_mut().reset() }
 }
+
+pub struct Thunk<T, M, F> {
+    constructor: F,
+    value: Option<Box<Regex<T, M>>>,
+}
+
+pub fn delay<T, M, F>(constructor: F) -> AnyRegex<T, M, Thunk<T, M, F>> where
+    M: Zero,
+    F: Fn() -> Box<Regex<T, M>> + Clone,
+{
+    AnyRegex::new(Thunk { constructor: constructor, value: None })
+}
+
+impl<T, M, F> Thunk<T, M, F> where
+    F: Fn() -> Box<Regex<T, M>>,
+{
+    fn force(&mut self) -> &mut Box<Regex<T, M>> {
+        if self.value.is_none() {
+            self.value = Some((self.constructor)());
+        }
+        self.value.as_mut().unwrap()
+    }
+}
+
+impl<T, M, F> Regex<T, M> for Thunk<T, M, F> where
+    M: Zero,
+    F: Fn() -> Box<Regex<T, M>>,
+{
+    fn empty(&mut self) -> bool { self.force().empty() }
+    fn active(&self) -> bool {
+        self.value.as_ref().map_or(false, Regex::active)
+    }
+    fn shift(&mut self, c : &T, mark : M) -> M {
+        self.force().shift(c, mark)
+    }
+    fn reset(&mut self) {
+        self.value = None;
+    }
+}
+
+impl<T, M, F> CloneRegex<T, M> for Thunk<T, M, F> where
+    M: Zero,
+    F: Fn() -> Box<Regex<T, M>> + Clone,
+{
+    fn clone_reset(&self) -> AnyRegex<T, M, Self> {
+        delay(self.constructor.clone())
+    }
+}

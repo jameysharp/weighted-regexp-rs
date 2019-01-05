@@ -55,6 +55,12 @@ impl<T, M, R> AnyRegex<T, M, R> where
             mark_type: PhantomData,
         }
     }
+
+    pub fn boxed(self) -> Box<Regex<T, M>> where
+        R: 'static,
+    {
+        Box::new(self.re)
+    }
 }
 
 impl<T, M, R> AnyRegex<T, M, R> where

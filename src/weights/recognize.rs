@@ -173,6 +173,10 @@ mod tests {
             to_match.chars().all(|c| c == 'A') ==
                 has_match(&mut many(many(re)), to_match.chars())
         }
+
+        fn delayed(to_match : Option<bool>) -> bool {
+            let mut re = delay(|| is(|&b| Match(b)).boxed());
+            (to_match == Some(true)) == has_match(&mut re, to_match)
+        }
     }
 }
-

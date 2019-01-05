@@ -8,7 +8,7 @@ pub struct Empty;
 impl<T, M> Regex<T, M> for Empty where
     M: Zero,
 {
-    fn empty(&self) -> bool { true }
+    fn empty(&mut self) -> bool { true }
     fn active(&self) -> bool { false }
     fn shift(&mut self, _c : &T, _mark : M) -> M { zero() }
     fn reset(&mut self) { }
@@ -31,7 +31,7 @@ impl<T, M, F> Regex<T, M> for F where
     M: ops::Mul<Output=M>,
     F: Fn(&T) -> M,
 {
-    fn empty(&self) -> bool { false }
+    fn empty(&mut self) -> bool { false }
     fn active(&self) -> bool { false }
     fn shift(&mut self, c : &T, mark : M) -> M {
         mark * self(c)
@@ -73,7 +73,7 @@ impl<T, M, R> Regex<T, M> for Not<T, M, R> where
     M: Zero + One,
     R: Regex<T, M>,
 {
-    fn empty(&self) -> bool { !self.0.empty() }
+    fn empty(&mut self) -> bool { !self.0.empty() }
 
     // Complement grammars are always active, because shifting in a zero
     // may still result in a non-zero being shifted out.
@@ -117,7 +117,7 @@ impl<T, M, L, R> Regex<T, M> for Or<T, M, L, R> where
     L: Regex<T, M>,
     R: Regex<T, M>,
 {
-    fn empty(&self) -> bool { self.left.empty() || self.right.empty() }
+    fn empty(&mut self) -> bool { self.left.empty() || self.right.empty() }
     fn active(&self) -> bool { self.left.active() || self.right.active() }
     fn shift(&mut self, c : &T, mark : M) -> M {
         self.left.shift(c, mark.clone()) + self.right.shift(c, mark)
@@ -160,7 +160,7 @@ impl<T, M, L, R> Regex<T, M> for And<T, M, L, R> where
     L: Regex<T, M>,
     R: Regex<T, M>,
 {
-    fn empty(&self) -> bool { self.left.empty() && self.right.empty() }
+    fn empty(&mut self) -> bool { self.left.empty() && self.right.empty() }
     fn active(&self) -> bool { self.left.active() && self.right.active() }
     fn shift(&mut self, c : &T, mark : M) -> M {
         self.left.shift(c, mark.clone()) * self.right.shift(c, mark)
@@ -204,7 +204,7 @@ impl<T, M, L, R> Regex<T, M> for Sequence<T, M, L, R> where
     L: Regex<T, M>,
     R: Regex<T, M>,
 {
-    fn empty(&self) -> bool { self.left.empty() && self.right.empty() }
+    fn empty(&mut self) -> bool { self.left.empty() && self.right.empty() }
     fn active(&self) -> bool {
         !self.from_left.is_zero() || self.left.active() || self.right.active()
     }
@@ -308,7 +308,7 @@ impl<T, M, R> Regex<T, M> for Many<T, M, R> where
     M: Zero + Clone,
     R: Regex<T, M>,
 {
-    fn empty(&self) -> bool { true }
+    fn empty(&mut self) -> bool { true }
     fn active(&self) -> bool { !self.marked.is_zero() || self.re.active() }
     fn shift(&mut self, c : &T, mark : M) -> M {
         let was_marked = replace(&mut self.marked, zero());
@@ -332,7 +332,7 @@ impl<T, M, R> CloneRegex<T, M> for Many<T, M, R> where
 
 impl<T, M> Regex<T, M> for Box<Regex<T, M>>
 {
-    fn empty(&self) -> bool { self.as_ref().empty() }
+    fn empty(&mut self) -> bool { self.as_mut().empty() }
     fn active(&self) -> bool { self.as_ref().active() }
     fn shift(&mut self, c : &T, mark : M) -> M { self.as_mut().shift(c, mark) }
     fn reset(&mut self) { self.as_mut().reset() }

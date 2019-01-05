@@ -61,7 +61,7 @@ impl<T, M, R> AnyRegex<T, M, R> where
     M: Zero,
     R: Regex<T, M>,
 {
-    pub fn empty(&self) -> bool { self.re.empty() }
+    pub fn empty(&mut self) -> bool { self.re.empty() }
     pub fn active(&self) -> bool { self.active }
     pub fn shift(&mut self, c : &T, mark : M) -> M {
         if !self.active && mark.is_zero() {
@@ -81,7 +81,7 @@ impl<T, M, R> AnyRegex<T, M, R> where
 
 /// Grammar types must implement `Regex`.
 pub trait Regex<T, M> {
-    fn empty(&self) -> bool;
+    fn empty(&mut self) -> bool;
     fn active(&self) -> bool;
     fn shift(&mut self, c : &T, mark : M) -> M;
     fn reset(&mut self);

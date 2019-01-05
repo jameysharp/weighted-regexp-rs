@@ -178,5 +178,25 @@ mod tests {
             let mut re = delay(|| is(|&b| Match(b)).boxed());
             (to_match == Some(true)) == has_match(&mut re, to_match)
         }
+
+        fn balanced_parens(to_match : Vec<bool>) -> bool {
+            fn parens() -> AnyRegex<bool, Match, impl Regex<bool, Match>> {
+                let open = is(|&b| Match(b == false));
+                let close = is(|&b| Match(b == true));
+                many(open + delay(|| parens().boxed()) + close)
+            }
+
+            let mut last_depth = 0;
+            let valid_nesting = to_match
+                .iter()
+                .scan(0isize, |depth, &b| {
+                    if b { *depth -= 1 } else { *depth += 1 }
+                    Some(*depth)
+                })
+                .inspect(|&depth| last_depth = depth)
+                .all(|depth| depth >= 0);
+
+            (valid_nesting && last_depth == 0) == has_match(&mut parens(), to_match)
+        }
     }
 }

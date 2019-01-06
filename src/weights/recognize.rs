@@ -38,6 +38,7 @@ pub fn has_match<T, R, I>(re : &mut AnyRegex<T, Match, R>, over : I) -> bool
 mod tests {
     use super::*;
     use ::*;
+    use itertools::{Itertools, repeat_n};
 
     quickcheck! {
         fn epsilon_bool(to_match : Vec<bool>) -> bool {
@@ -178,25 +179,46 @@ mod tests {
             let mut re = delay(|| is(|&b| Match(b)).boxed());
             (to_match == Some(true)) == has_match(&mut re, to_match)
         }
+    }
 
-        fn balanced_parens(to_match : Vec<bool>) -> bool {
-            fn parens() -> AnyRegex<bool, Match, impl Regex<bool, Match>> {
-                let open = is(|&b| Match(b == false));
-                let close = is(|&b| Match(b == true));
-                many(open + delay(|| parens().boxed()) + close)
-            }
+    #[test]
+    fn balanced_parens() {
+        fn parens() -> AnyRegex<u8, Match, impl Regex<u8, Match>> {
+            let open = is(|&c| Match(c == b'('));
+            let close = is(|&c| Match(c == b')'));
+            many(open + delay(|| parens().boxed()) + close)
+        }
 
+        fn reference(s: &[u8]) -> bool {
             let mut last_depth = 0;
-            let valid_nesting = to_match
+            let valid_nesting = s
                 .iter()
-                .scan(0isize, |depth, &b| {
-                    if b { *depth -= 1 } else { *depth += 1 }
+                .scan(0isize, |depth, &c| {
+                    match c {
+                        b'(' => *depth += 1,
+                        b')' => *depth -= 1,
+                        _ => return Some(-1),
+                    }
                     Some(*depth)
                 })
                 .inspect(|&depth| last_depth = depth)
                 .all(|depth| depth >= 0);
+            valid_nesting && last_depth == 0
+        }
 
-            (valid_nesting && last_depth == 0) == has_match(&mut parens(), to_match)
+        let mut parens = parens();
+        let alphabet = b"()x".to_vec();
+        let alphabet = alphabet.iter().cloned();
+        for len in 0..=8 {
+            for to_match in repeat_n(alphabet.clone(), len).multi_cartesian_product() {
+                let expected = reference(&to_match);
+                let actual = has_match(&mut parens, to_match.iter().cloned());
+                assert!(expected == actual,
+                        "{} {}",
+                        std::str::from_utf8(&to_match).unwrap(),
+                        if expected { "should match" } else { "should not match" },
+                    );
+            }
         }
     }
 }

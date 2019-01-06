@@ -1,6 +1,8 @@
 #[cfg(test)]
 #[macro_use]
 extern crate quickcheck;
+#[cfg(test)]
+extern crate itertools;
 
 extern crate num_traits;
 

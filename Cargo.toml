@@ -13,4 +13,4 @@ num-traits = ">= 0.1, < 0.3"
 
 [dev-dependencies]
 # The quickcheck! macro was introduced in 0.3.
-quickcheck = ">= 0.3, < 0.8"
+quickcheck = ">= 0.3, < 0.9"

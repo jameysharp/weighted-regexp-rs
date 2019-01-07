@@ -172,7 +172,7 @@ impl<T, M, L, R> Regex<T, M> for And<T, M, L, R> where
     R: Regex<T, M>,
 {
     fn empty(&mut self) -> bool { self.left.empty() && self.right.empty() }
-    fn active(&self) -> bool { self.left.active() && self.right.active() }
+    fn active(&self) -> bool { self.left.active() || self.right.active() }
     fn shift(&mut self, c : &T, mark : M) -> M {
         self.left.shift(c, mark.clone()) * self.right.shift(c, mark)
     }

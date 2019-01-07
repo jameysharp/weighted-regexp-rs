@@ -2,9 +2,9 @@
 //! semiring produces only a `true` or `false` result, without capturing
 //! any information from the input.
 
-use num_traits::{Zero, One};
+use num_traits::{Zero, zero, One, one};
 use std::ops::{Add, Mul};
-use ::core::{Regex, AnyRegex};
+use ::core::{Regex, AnyRegex, IntoWithInput};
 
 #[derive(Copy, Clone)]
 pub struct Match(bool);
@@ -26,6 +26,16 @@ impl Mul for Match {
 
 impl One for Match {
     fn one() -> Match { Match(true) }
+}
+
+impl<T> IntoWithInput<T, Match> for Match {
+    fn into_with_input(self, _input: &T) -> Match { self }
+}
+
+impl<T> IntoWithInput<T, Match> for bool {
+    fn into_with_input(self, _input: &T) -> Match {
+        if self { one() } else { zero() }
+    }
 }
 
 pub fn has_match<T, R, I>(re : &mut AnyRegex<T, Match, R>, over : I) -> bool
@@ -56,7 +66,7 @@ mod tests {
                     (Some(&expected), None) => expected,
                     _ => false,
                 }
-            }) == has_match(&mut is(|&c| Match(c)), to_match)
+            }) == has_match(&mut is(|&c| c), to_match)
         }
 
         fn fn_char(to_match : String) -> bool {
@@ -66,26 +76,26 @@ mod tests {
                     (Some(expected), None) => expected.is_uppercase(),
                     _ => false,
                 }
-            }) == has_match(&mut is(|&c| Match(char::is_uppercase(c))), to_match.chars())
+            }) == has_match(&mut is(|&c| char::is_uppercase(c)), to_match.chars())
         }
 
         fn fn_any_bool(to_match : Vec<bool>) -> bool {
-            let mut re = is(|_| Match(true));
+            let mut re = is(|_| true);
             (to_match.len() == 1) == has_match(&mut re, to_match)
         }
 
         fn fn_any_char(to_match : String) -> bool {
-            let mut re = is(|_| Match(true));
+            let mut re = is(|_| true);
             (to_match.chars().count() == 1) == has_match(&mut re, to_match.chars())
         }
 
         fn fn_none_bool(to_match : Vec<bool>) -> bool {
-            let mut re = is(|_| Match(false));
+            let mut re = is(|_| false);
             !has_match(&mut re, to_match)
         }
 
         fn fn_none_char(to_match : String) -> bool {
-            let mut re = is(|_| Match(false));
+            let mut re = is(|_| false);
             !has_match(&mut re, to_match.chars())
         }
 
@@ -95,12 +105,12 @@ mod tests {
 
         fn not_all_bools(to_match : Vec<bool>) -> bool {
             !to_match.iter().all(|&b| b) ==
-                has_match(&mut !many(is(|&c| Match(c))), to_match)
+                has_match(&mut !many(is(|&c| c)), to_match)
         }
 
         fn alternative(to_match : String) -> bool {
-            let a = is(|&c| Match(c == 'a'));
-            let b = is(|&c| Match(c == 'b'));
+            let a = is(|&c| c == 'a');
+            let b = is(|&c| c == 'b');
             ({
                 let mut iter = to_match.chars();
                 match (iter.next(), iter.next()) {
@@ -111,44 +121,44 @@ mod tests {
         }
 
         fn alternative_any_epsilon(to_match : String) -> bool {
-            let re = is(|_| Match(true));
+            let re = is(|_| true);
             (to_match.chars().count() <= 1) ==
                 has_match(&mut (re | empty()), to_match.chars())
         }
 
         fn alternative_epsilon_any(to_match : String) -> bool {
-            let re = is(|_| Match(true));
+            let re = is(|_| true);
             (to_match.chars().count() <= 1) ==
                 has_match(&mut (empty() | re), to_match.chars())
         }
 
         fn and(to_match : Vec<u8>) -> bool {
-            let hexes = many(is(|&c| Match(c > 10)));
-            let uppers = many(is(|&c| Match(c % 2 == 0)));
+            let hexes = many(is(|&c| c > 10));
+            let uppers = many(is(|&c| c % 2 == 0));
             to_match.iter().all(|&c| c > 10 && c % 2 == 0) ==
                 has_match(&mut (hexes & uppers), to_match)
         }
 
         fn and_impossible(to_match : String) -> bool {
-            let something = is(|_| Match(true));
+            let something = is(|_| true);
             let nothing = empty();
             !has_match(&mut (something & nothing), to_match.chars())
         }
 
         fn sequence_epsilon_left_identity(to_match : String) -> bool {
-            let mut re = is(|&c| Match(char::is_uppercase(c)));
+            let mut re = is(|&c| char::is_uppercase(c));
             has_match(&mut (empty() + re.clone_reset()), to_match.chars()) ==
                 has_match(&mut re, to_match.chars())
         }
 
         fn sequence_epsilon_right_identity(to_match : String) -> bool {
-            let mut re = is(|&c| Match(char::is_uppercase(c)));
+            let mut re = is(|&c| char::is_uppercase(c));
             has_match(&mut (re.clone_reset() + empty()), to_match.chars()) ==
                 has_match(&mut re, to_match.chars())
         }
 
         fn sequence_repeat_epsilon_right_identity(to_match : String) -> bool {
-            let mut re = many(is(|&c| Match(char::is_uppercase(c))));
+            let mut re = many(is(|&c| char::is_uppercase(c)));
             has_match(&mut (re.clone_reset() + empty()), to_match.chars()) ==
                 has_match(&mut re, to_match.chars())
         }
@@ -159,24 +169,24 @@ mod tests {
         }
 
         fn repeat_any(to_match : String) -> bool {
-            let re = is(|_| Match(true));
+            let re = is(|_| true);
             has_match(&mut many(re), to_match.chars())
         }
 
         fn repeat_char(to_match : String) -> bool {
-            let re = is(|&c| Match(c == 'A'));
+            let re = is(|&c| c == 'A');
             to_match.chars().all(|c| c == 'A') ==
                 has_match(&mut many(re), to_match.chars())
         }
 
         fn repeat_repeat_char(to_match : String) -> bool {
-            let re = is(|&c| Match(c == 'A'));
+            let re = is(|&c| c == 'A');
             to_match.chars().all(|c| c == 'A') ==
                 has_match(&mut many(many(re)), to_match.chars())
         }
 
         fn delayed(to_match : Option<bool>) -> bool {
-            let mut re = delay(|| is(|&b| Match(b)).boxed());
+            let mut re = delay(|| is(|&b| b).boxed());
             (to_match == Some(true)) == has_match(&mut re, to_match)
         }
     }
@@ -184,8 +194,8 @@ mod tests {
     #[test]
     fn balanced_parens() {
         fn parens() -> AnyRegex<u8, Match, impl Regex<u8, Match>> {
-            let open = is(|&c| Match(c == b'('));
-            let close = is(|&c| Match(c == b')'));
+            let open = is(|&c| c == b'(');
+            let close = is(|&c| c == b')');
             many(open + delay(|| parens().boxed()) + close)
         }
 

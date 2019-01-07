@@ -1,5 +1,7 @@
-use core::{Regex, CloneRegex, AnyRegex};
+use core::{Regex, CloneRegex, AnyRegex, IntoWithInput};
 use num_traits::{Zero, zero, One, one};
+use std::borrow::Borrow;
+use std::marker::PhantomData;
 use std::mem::replace;
 use std::ops;
 
@@ -27,36 +29,45 @@ pub fn empty<T, M>() -> AnyRegex<T, M, Empty> where
     AnyRegex::new(Empty)
 }
 
-impl<T, M, F> Regex<T, M> for F where
+pub struct Is<T, M, F>(F, PhantomData<T>, PhantomData<M>);
+
+impl<T, U, M, N, F> Regex<T, M> for Is<U, N, F> where
     M: ops::Mul<Output=M>,
-    F: Fn(&T) -> M,
+    F: Fn(&U) -> N,
+    T: Borrow<U>,
+    N: IntoWithInput<T, M>,
 {
     fn empty(&mut self) -> bool { false }
     fn active(&self) -> bool { false }
     fn shift(&mut self, c : &T, mark : M) -> M {
-        mark * self(c)
+        mark * (self.0)(c.borrow()).into_with_input(c)
     }
     fn reset(&mut self) { }
 }
 
-impl<T, M, F> CloneRegex<T, M> for F where
+impl<T, U, M, N, F> CloneRegex<T, M> for Is<U, N, F> where
     M: Zero + ops::Mul<Output=M>,
-    F: Fn(&T) -> M + Clone,
+    F: Fn(&U) -> N + Clone,
+    T: Borrow<U>,
+    N: IntoWithInput<T, M>,
 {
-    fn clone_reset(&self) -> AnyRegex<T, M, Self> { is(self.clone()) }
+    fn clone_reset(&self) -> AnyRegex<T, M, Self> { is(self.0.clone()) }
 }
 
 /// Language which only matches inputs containing exactly one item, and
 /// passes that item to an arbitrary function you provide.
 ///
-/// This function can return any value within the weights semiring `M`;
-/// in simple cases, you probably want to return `zero()` if you want
-/// the input to not match, or `one()` if it should match.
-pub fn is<T, M, F>(f: F) -> AnyRegex<T, M, F> where
+/// This function can return any value which can be converted into the
+/// weights semiring `M` via `IntoWithInput`. In simple cases, you
+/// probably want to return a bool indicating whether the input should
+/// match.
+pub fn is<T, U, M, N, F>(f: F) -> AnyRegex<T, M, Is<U, N, F>> where
     M: Zero + ops::Mul<Output=M>,
-    F: Fn(&T) -> M,
+    F: Fn(&U) -> N,
+    T: Borrow<U>,
+    N: IntoWithInput<T, M>,
 {
-    AnyRegex::new(f)
+    AnyRegex::new(Is(f, PhantomData, PhantomData))
 }
 
 pub struct Not<T, M, R>(AnyRegex<T, M, R>);

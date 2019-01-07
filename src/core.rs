@@ -101,3 +101,20 @@ impl<T, M, R: CloneRegex<T, M>> AnyRegex<T, M, R> {
 pub trait CloneRegex<T, M>: Regex<T, M> + Sized {
     fn clone_reset(&self) -> AnyRegex<T, M, Self>;
 }
+
+/// Like std::convert::Into, except that the conversion may optionally
+/// use the current item of parse input in addition to `self`.
+///
+/// Weight types should at least provide a reflexive implementation
+/// which ignores the input and performs an identity conversion, so that
+/// grammars can explicitly choose which type of weight to produce.
+///
+/// Weight types should also provide an implementation for converting
+/// `bool` to a weight. This may be as simple as ignoring the input and
+/// just returning `one()` if `self` is `true`, or `zero()` otherwise.
+/// But weight implementations can choose to record the matched input
+/// within the weights, and this trait allows generic bool-returning
+/// grammars to work with those weights.
+pub trait IntoWithInput<T, M> {
+    fn into_with_input(self, input: &T) -> M;
+}
